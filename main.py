@@ -282,8 +282,8 @@ class Solution:
 
         def show_int(name):
             t = [value for _, value in traverse_generator(name)]
-            if len(t) > 50:
-                log_debug(f'{name} = {t[:20]} ... and more')
+            if len(t) > 500:
+                log_debug(f'{name} = {t[:300]} ... and more')
             else:
                 log_debug(f'{name} = {t}')
 
@@ -486,11 +486,32 @@ class EFSM:
                 log_debug(f'├──{transition}')
             log_debug(f'└──{state.transitions[-1]}')
 
+    def write_gv(self, filename):
+        log_debug(f'Dumping EFSM to <{filename}>...')
+
+        with open(filename, 'w') as f:
+            f.write('digraph {\n')
+            state_numbers = {state: i for i, state in enumerate(self.states.values())}
+
+            f.write('    // States\n')
+            f.write('    { node []\n')
+            for state in self.states.values():
+                f.write(f'      {state_numbers[state]} [label="{state.id}: {state.output_event}({state.algorithm_0}_{state.algorithm_1})"]\n')
+            f.write('    }\n')
+
+            f.write('    // Transitions\n')
+            for state in self.states.values():
+                for transition in state.transitions:
+                    f.write(f'    {state_numbers[transition.source]} -> {state_numbers[transition.destination]} [label="{transition.input_event} [{transition.guard}]"]\n')
+
+            f.write('}\n')
+
 
 class Instance:
 
     def __init__(self, *, C, K, P, N, filename_traces, filename_predicate_names,
-                 filename_output_variable_names, basename_formula, is_reuse=False, solver):
+                 filename_output_variable_names, basename_formula,
+                 is_reuse, is_minimize, solver, timeout):
         # ======== This variables are for testing, before proper optimization is implemented
         self.C = C
         self.K = K
@@ -500,7 +521,9 @@ class Instance:
         self.filename_traces = filename_traces
         self.basename_formula = basename_formula + '_' + os.path.splitext(os.path.basename(filename_traces))[0]
         self.is_reuse = is_reuse
+        self.is_minimize = is_minimize
         self.solver = solver
+        self.timeout = timeout
 
         self.scenarios_full = read_scenarios(self.filename_traces)
         self.scenarios = preprocess_scenarios(self.scenarios_full)
@@ -517,25 +540,44 @@ class Instance:
         GlobalState['predicate_names'] = self.tree.predicate_names
         GlobalState['output_variable_names'] = self.tree.output_variable_names
 
-    def run_once(self):
-        # C = self.C
-        # K = self.K
-        # P = self.P
-        # N = self.N
-
-        # self.prepare_base(C, K, P)
-        # self.prepare_objective(C, K, P, N)
-        # self.solve(C, K, P, N)
-        # self.build_solution(C, K, P, N)
-        # self.verify()
-        # self.dump()
-        raise NotImplementedError('please, rerun with --min')
-
     def run(self):
+        if self.is_minimize:
+            self.run_minimize()
+        else:
+            self.run_once()
+
+    def run_once(self):
         C = self.C
         K = self.K
         P = self.P
         N = self.N
+
+        if N <= 0:
+            log_warn('Solving without cardinality')
+            reduction = self.generate_base_reduction(C, K, P)
+        else:
+            reduction_base = self.generate_base_reduction(C, K, P)
+            reduction_obj = self.generate_objective_function(reduction_base)
+            reduction = self.generate_cardinality(N, reduction_obj)
+        solution = self.solve(reduction)
+        log_br()
+
+        if solution is None:  # UNSAT
+            log_error('UNSAT')
+        else:  # SAT
+            self.build_efsm(solution)
+            self.verify()
+            self.dump()
+
+    def run_minimize(self):
+        C = self.C
+        K = self.K
+        P = self.P
+        N = self.N
+
+        if N <= 0:
+            N = C * K * P
+            log_warn(f'Using maximum possible N = C*K*P = {N}')
 
         reduction_base = self.generate_base_reduction(C, K, P)
         reduction_obj = self.generate_objective_function(reduction_base)
@@ -803,6 +845,12 @@ class Instance:
             for k in closed_range(1, K):
                 clause(-transition[c, k, c])
 
+        # FIXME: new
+        comment('2.3. Forbid transitions to start state')
+        for c in closed_range(2, C):
+            for k in closed_range(1, K):
+                clause(-transition[c, k, 1])
+
         log_debug(f'2. Clauses: {next(so_far)}', symbol='DEBUG')
         # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 
@@ -1011,6 +1059,14 @@ class Instance:
         #                 clause(-child_left[c, k, p, ch], parent[c, k, ch, p])
         #             for ch in closed_range(p + 2, P):
         #                 clause(-child_right[c, k, p, ch], parent[c, k, ch, p])
+
+        # FIXME: new
+        comment('7.4. parent<->child relation')
+        for c in closed_range(1, C):
+            for k in closed_range(1, K):
+                for p in closed_range(1, P - 1):
+                    for ch in closed_range(p+ 1, P):
+                        clause(-parent[c, k, ch, p], child_left[c, k, p, ch], child_right[c, k, p, ch])
 
         log_debug(f'7. Clauses: {next(so_far)}', symbol='DEBUG')
         # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
@@ -1280,39 +1336,39 @@ class Instance:
         log_debug(f'Base variables: {number_of_variables}')
         log_debug(f'Base clauses: {number_of_clauses}')
 
-        filename_dimacs_base = self.get_filename_dimacs_base(C, K, P)
-        if not self.is_reuse or not os.path.exists(filename_dimacs_base):
-            self.write_dimacs(clauses, filename_dimacs_base)
+        reduction = Reduction(C=C,
+                              K=K,
+                              P=P,
+                              N=None,
+                              number_of_base_variables=number_of_variables,
+                              number_of_base_clauses=number_of_clauses,
+                              number_of_objective_variables=0,
+                              number_of_objective_clauses=0,
+                              number_of_cardinality_clauses=0,
+                              color=color,
+                              transition=transition,
+                              trans_event=trans_event,
+                              output_event=output_event,
+                              algorithm_0=algorithm_0,
+                              algorithm_1=algorithm_1,
+                              nodetype=nodetype,
+                              terminal=terminal,
+                              child_left=child_left,
+                              child_right=child_right,
+                              parent=parent,
+                              value=value,
+                              child_value_left=child_value_left,
+                              child_value_right=child_value_right,
+                              fired_only=fired_only,
+                              not_fired=not_fired,
+                              objective=None)
+
+        filename_dimacs_base = self.get_filename_dimacs_base(reduction)
+        self.write_dimacs(clauses, filename_dimacs_base)
 
         log_success(f'Done generating base reduction in {time.time() - time_start_generate:.2f} s')
         log_br()
-
-        return Reduction(C=C,
-                         K=K,
-                         P=P,
-                         N=None,
-                         number_of_base_variables=number_of_variables,
-                         number_of_base_clauses=number_of_clauses,
-                         number_of_objective_variables=0,
-                         number_of_objective_clauses=0,
-                         number_of_cardinality_clauses=0,
-                         color=color,
-                         transition=transition,
-                         trans_event=trans_event,
-                         output_event=output_event,
-                         algorithm_0=algorithm_0,
-                         algorithm_1=algorithm_1,
-                         nodetype=nodetype,
-                         terminal=terminal,
-                         child_left=child_left,
-                         child_right=child_right,
-                         parent=parent,
-                         value=value,
-                         child_value_left=child_value_left,
-                         child_value_right=child_value_right,
-                         fired_only=fired_only,
-                         not_fired=not_fired,
-                         objective=None)
+        return reduction
 
     def generate_objective_function(self, reduction):
         log_info(f'Generating objective function...')
@@ -1326,9 +1382,7 @@ class Instance:
         def comment(s):
             clauses.append(s)
 
-        C = reduction.C
-        K = reduction.K
-        P = reduction.P
+        C, K, P = reduction.C, reduction.K, reduction.P
         bomba = count(reduction.number_of_base_variables + 1)
 
         comment('Preparing objective function')
@@ -1400,8 +1454,6 @@ class Instance:
         del bomba  # invalidated
         if _base + _obj != _total:
             log_error(f'base+obj != total :: {_base}+{_obj} != {_total}')
-        # else:
-        #     log_success(f'base+obj == total :: {_base}+{_obj} == {_total}', bold=False)
         assert _base + _obj == _total
         # ============
 
@@ -1411,9 +1463,8 @@ class Instance:
         # if number_of_constraints != number_of_unique_constraints:
         #     log_warn('Some constraints are duplicated')
 
-        filename_dimacs_objective = self.get_filename_dimacs_objective(C, K, P)
-        if not self.is_reuse or not os.path.exists(filename_dimacs_objective):
-            self.write_dimacs(clauses, filename_dimacs_objective)
+        filename_dimacs_objective = self.get_filename_dimacs_objective(reduction)
+        self.write_dimacs(clauses, filename_dimacs_objective)
 
         log_success(f'Done generating objective function in {time.time() - time_start_objective:.2f} s')
         log_br()
@@ -1436,9 +1487,7 @@ class Instance:
         def comment(s):
             clauses.append(s)
 
-        C = reduction.C
-        K = reduction.K
-        P = reduction.P
+        C, K, P = reduction.C, reduction.K, reduction.P
 
         comment('Objective function: sum(E) <= N')
         for i in closed_range(N + 1, C * K * P):
@@ -1457,30 +1506,35 @@ class Instance:
         # if number_of_clauses != number_of_unique_clauses:
         #     log_warn('Some clauses are duplicated')
 
-        filename_dimacs = self.get_filename_dimacs_cardinality(C, K, P, N)
-        self.write_dimacs(clauses, filename_dimacs)
-
-        log_success(f'Done generating cardinality in {time.time() - time_start_cardinality:.2f} s')
-
-        return reduction._replace(
+        reduction = reduction._replace(
             N=N,
             number_of_cardinality_clauses=number_of_clauses
         )
+
+        filename_dimacs_cardinality = self.get_filename_dimacs_cardinality(reduction)
+        self.write_dimacs(clauses, filename_dimacs_cardinality)
+
+        log_success(f'Done generating cardinality in {time.time() - time_start_cardinality:.2f} s')
+        return reduction
 
     def solve(self, reduction):
         log_info(f'Solving...')
         time_start_solve = time.time()
 
-        C = reduction.C
-        K = reduction.K
-        P = reduction.P
-        N = reduction.N
+        filename_header = self.get_filename_header(reduction)
+        self.write_header(reduction, filename_header)
 
-        self.write_header(reduction)
+        filename_merged = self.get_filename_merged(reduction)
+        self.write_merged(reduction, filename_merged)
 
-        cmd = f'cat {self.get_filenames(C,K,P,N)} | {self.solver}'
+        cmd = f'{self.solver} {filename_merged}'
         log_debug(cmd)
-        p = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, universal_newlines=True)
+        try:
+            p = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE,
+                               universal_newlines=True, timeout=self.timeout)
+        except subprocess.TimeoutExpired:
+            log_error(f'Timeout in {time.time() - time_start_solve:.2f} s')
+            return
 
         if p.returncode == 10:
             log_success(f'SAT in {time.time() - time_start_solve:.2f} s')
@@ -1501,53 +1555,73 @@ class Instance:
         else:
             log_error(f'returncode {p.returncode} in {time.time() - time_start_solve:.2f} s')
 
-    def get_filename_dimacs_base(self, C, K, P):
+    def get_filename_dimacs_base(self, reduction):
+        C, K, P = reduction.C, reduction.K, reduction.P
         return f'{self.basename_formula}_C{C}_K{K}_P{P}_base.dimacs'
 
-    def get_filename_dimacs_objective(self, C, K, P):
+    def get_filename_dimacs_objective(self, reduction):
+        C, K, P = reduction.C, reduction.K, reduction.P
         return f'{self.basename_formula}_C{C}_K{K}_P{P}_objective.dimacs'
 
-    def get_filename_dimacs_cardinality(self, C, K, P, N):
+    def get_filename_dimacs_cardinality(self, reduction):
+        C, K, P, N = reduction.C, reduction.K, reduction.P, reduction.N
         return f'{self.basename_formula}_C{C}_K{K}_P{P}_N{N}_cardinality.dimacs'
 
-    def get_filename_header(self, C, K, P, N):
+    def get_filename_header(self, reduction):
+        C, K, P, N = reduction.C, reduction.K, reduction.P, reduction.N
         return f'{self.basename_formula}_C{C}_K{K}_P{P}_N{N}_header.dimacs'
 
-    def get_filenames(self, C, K, P, N):
-        return f'{self.basename_formula}_C{C}_K{K}_P{P}_{{N{N}_header,base,objective,N{N}_cardinality}}.dimacs'
+    def get_filename_merged(self, reduction):
+        C, K, P, N = reduction.C, reduction.K, reduction.P, reduction.N
+        if N is not None:
+            return f'{self.basename_formula}_C{C}_K{K}_P{P}_N{N}_merged.dimacs'
+        else:
+            return f'{self.basename_formula}_C{C}_K{K}_P{P}_merged.dimacs'
+
+    def get_filenames(self, reduction):
+        if reduction.N is not None:
+            return ' '.join((self.get_filename_header(reduction),
+                             self.get_filename_dimacs_base(reduction),
+                             self.get_filename_dimacs_objective(reduction),
+                             self.get_filename_dimacs_cardinality(reduction)))
+        else:
+            return ' '.join((self.get_filename_header(reduction),
+                             self.get_filename_dimacs_base(reduction)))
 
     def write_dimacs(self, clauses, filename):
-        # log_info(f'Writing clauses to <{filename}>...')
-        # time_start_write = time.time()
-        log_debug(f'Writing clauses to <{filename}>...')
+        if self.is_reuse and os.path.exists(filename):
+            log_debug(f'Reusing clauses from <{filename}>')
+            return
 
+        log_debug(f'Writing clauses to <{filename}>...')
         with tempfile.NamedTemporaryFile('w', delete=False) as f:
-            # log_debug(f'Temporarily writing to <{f.name}>...')
             for clause in clauses:
                 if isinstance(clause, str):
                     f.write('c ' + clause + '\n')
                 else:
-                    # assert all(clause)  # no zeros
                     f.write(' '.join(map(str, clause)) + ' 0\n')
-        # log_debug(f'Moving temporary file to target')
         shutil.move(f.name, filename)
 
-        # log_success(f'Done writing DIMACS in {time.time() - time_start_write:.2f} s')
+    def write_header(self, reduction, filename):
+        if self.is_reuse and os.path.exists(filename):
+            log_debug(f'Reusing header from <{filename}>')
+            return
 
-    def write_header(self, reduction):
-        filename = self.get_filename_header(reduction.C, reduction.K, reduction.P, reduction.N)
-
-        # log_info(f'Writing header to <{filename}>...')
-        # time_start_write = time.time()
         log_debug(f'Writing header to <{filename}>...')
-
-        number_of_variables = reduction.number_of_base_variables + reduction.number_of_objective_variables
-        number_of_clauses = reduction.number_of_base_clauses + reduction.number_of_objective_clauses + reduction.number_of_cardinality_clauses
-
         with click.open_file(filename, 'w') as f:
+            number_of_variables = reduction.number_of_base_variables + reduction.number_of_objective_variables
+            number_of_clauses = reduction.number_of_base_clauses + reduction.number_of_objective_clauses + reduction.number_of_cardinality_clauses
             f.write(f'p cnf {number_of_variables} {number_of_clauses}\n')
 
-        # log_success(f'Done writing header in {time.time() - time_start_write:.2f} s')
+    def write_merged(self, reduction, filename):
+        if self.is_reuse and os.path.exists(filename):
+            log_debug(f'Reusing merged reduction from <{filename}>')
+            return
+
+        log_debug(f'Writing merged reduction to <{filename}>...')
+        cmd_cat = f'cat {self.get_filenames(reduction)} > {filename}'
+        log_debug(cmd_cat)
+        subprocess.run(cmd_cat, shell=True)
 
     def build_efsm(self, solution):
         log_info('Building EFSM...')
@@ -1587,6 +1661,9 @@ class Instance:
         self.efsm.pprint()
         # =======================
 
+        if self.efsm.number_of_nodes != solution.number_of_nodes:
+            log_error(f'Inequal number of nodes: efsm has {self.efsm.number_of_nodes}, solution has {solution.number_of_nodes}')
+
         log_success(f'Done building EFSM with {self.efsm.number_of_states} states, {self.efsm.number_of_transitions} transitions and {self.efsm.number_of_nodes} nodes in {time.time() - time_start_build:.2f} s')
         log_br()
 
@@ -1612,8 +1689,8 @@ class Instance:
                     log_error('incorrect output_event', symbol=f'{j+1}/{len(scenario)}')
                 elif new_values != element.output_values:
                     log_error('incorrect output_values', symbol=f'{j+1}/{len(scenario)}')
-                # assert output_event == element.output_event
-                # assert new_values == element.output_values
+                assert output_event == element.output_event
+                assert new_values == element.output_values
 
                 current_state = new_state
                 current_values = new_values
@@ -1622,6 +1699,19 @@ class Instance:
         log_br()
 
     def dump(self):
+        log_info('Dumping solution...')
+        time_start_dump = time.time()
+
+        filename_gv = f'out/efsm_{os.path.splitext(os.path.basename(self.filename_traces))[0]}_{self.efsm.number_of_nodes}nodes.gv'
+        os.makedirs(os.path.dirname(filename_gv), exist_ok=True)
+        self.efsm.write_gv(filename_gv)
+
+        output_format = 'png'
+        cmd = f'dot -T{output_format} {filename_gv} -o {os.path.splitext(filename_gv)[0]}.{output_format}'
+        log_debug(cmd)
+        os.system(cmd)
+
+        log_success(f'Done dumping solution in {time.time() - time_start_dump:.2f} s')
         log_br()
 
 
@@ -1717,7 +1807,7 @@ def read_names(filename):
               help='Maximum number of nodes in guard\'s boolean formula\'s parse tree')
 @click.option('-N', 'N', type=int, metavar='<int>', default=0,
               help='Initial upper bound on total number of nodes in all guard-trees')
-@click.option('--basename', metavar='<basename>',
+@click.option('--basename', metavar='<path>',
               type=click.Path(writable=True),
               default='cnf', show_default=True,
               help='Basename of file with generated formula')
@@ -1726,18 +1816,21 @@ def read_names(filename):
               # default='cryptominisat5 --verb=0', show_default=True,
               # default='cadical -q', show_default=True,
               help='SAT-solver')
+@click.option('--timeout', type=float, metavar='<float>',
+              default=30, show_default=True,
+              help='Solver timeout')
 @click.option('--min', 'is_minimize', is_flag=True,
               help='Do minimize')
 @click.option('--reuse', 'is_reuse', is_flag=True,
               help='Reuse generated base reduction and objective function')
-def cli(filename_traces, filename_predicate_names, filename_output_variable_names, C, K, P, N, basename, solver, is_minimize, is_reuse):
+def cli(filename_traces, filename_predicate_names, filename_output_variable_names, C, K, P, N, basename, solver, timeout, is_minimize, is_reuse):
     log_info('Welcome!')
     log_br()
     time_start = time.time()
 
-    if N == 0:
-        N = C * K * P
-        log_warn(f'Using maximum N=C*K*P = {N}')
+    if timeout <= 0:
+        log_warn(f'Not using timeout')
+        timeout = None
 
     instance = Instance(C=C, K=K, P=P, N=N,
                         filename_traces=filename_traces,
@@ -1745,11 +1838,10 @@ def cli(filename_traces, filename_predicate_names, filename_output_variable_name
                         filename_output_variable_names=filename_output_variable_names,
                         basename_formula=basename,
                         is_reuse=is_reuse,
-                        solver=solver)
-    if is_minimize:
-        instance.run()
-    else:
-        instance.run_once()
+                        is_minimize=is_minimize,
+                        solver=solver,
+                        timeout=timeout)
+    instance.run()
 
     log_success(f'All done in {time.time() - time_start:.2f} s')
 

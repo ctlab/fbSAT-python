@@ -1,17 +1,20 @@
+PY = python
+SCRIPY = main.py
+EXTRA =
+
 all:
 	@echo Specify some target
 
-.PHONY: tests-1
 tests-1:
-	# N = 14
-	python main.py -t tests/simple/tests-1.gz --basename /tmp/cnf --predicate-names real_predicate-names -C 6 -K 2 -P 3 --min
-
-.PHONY: tests-10
+	${PY} ${SCRIPY} -t tests/simple/tests-1.gz --basename /tmp/cnf -C 6 -K 2 -P 3 -N 14 ${EXTRA}
 tests-10:
-	# N <= 25
-	python main.py -t tests/simple/tests-10.gz --basename /tmp/cnf --predicate-names real_predicate-names -C 8 -K 4 -P 5 --min
-
-.PHONY: tests-39
+	${PY} ${SCRIPY} -t tests/simple/tests-10.gz --basename /tmp/cnf -C 8 -K 4 -P 5 -N 25 ${EXTRA}
+tests-20:
+	${PY} ${SCRIPY} -t tests/simple/tests-20.gz --basename /tmp/cnf -C 8 -K 4 -P 5 -N 25 ${EXTRA}
 tests-39:
-	# N <= 25
-	python main.py -t tests/simple/tests-39.gz --basename /tmp/cnf --predicate-names real_predicate-names -C 8 -K 4 -P 5 --min
+	${PY} ${SCRIPY} -t tests/simple/tests-39.gz --basename /tmp/cnf -C 8 -K 4 -P 5 -N 25 ${EXTRA}
+
+.PHONY: tests-1
+.PHONY: tests-10
+.PHONY: tests-20
+.PHONY: tests-39
