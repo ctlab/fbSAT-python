@@ -749,6 +749,10 @@ class Instance:
         fired_only = declare_array(C, K, U, with_zero=False)
         not_fired = declare_array(C, K, U, with_zero=False)
 
+        bfs_transition = declare_array(C, C, with_zero=False)
+        bfs_parent = declare_array(C, C, with_zero=False)
+        bfs_minsymbol = declare_array(K, C, C, with_zero=False)
+
         # log_debug(f'color:\n{color}')
         # log_debug(f'transition:\n{transition}')
         # log_debug(f'trans_event:\n{trans_event}')
@@ -1291,6 +1295,60 @@ class Instance:
         log_debug(f'11. Clauses: {next(so_far)}', symbol='DEBUG')
         # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 
+        comment('12. BFS constraints')
+        comment('12.1. F_t')
+        for i in closed_range(1, C):
+            for j in closed_range(i + 1, C):
+                # t_ij <=> OR_k(transition_ikj)
+                bfs_t = bfs_transition[i, j]
+                tr = transition[i, k, j]
+                rhs = []
+                for k in closed_range(1, K):
+                    clause(-tr, bfs_t)
+                    rhs.append(tr)
+                clause(*rhs, -bfs_t)
+
+        comment('12.2. F_p')
+        for i in closed_range(1, C):
+            for j in closed_range(i + 1, C):
+                # p_ji <=> t_ij & AND_[k<i](~t_kj)
+                bfs_p = bfs_parent[j, i]
+                rhs = [bfs_transition[i, j]]
+                for k in closed_range(1, i - 1):
+                    bfs_t = bfs_transition[k, j]
+                    clause(-bfs_t, -bfs_p)
+                    rhs.append(-bfs_t)
+                clause(*[-r for r in rhs], bfs_p)
+
+        comment('12.3. F_ALO(p)')
+        for j in closed_range(2, C):
+            clause(*[bfs_parent[j, i] for i in closed_range(1, j - 1)])
+
+        comment('12.4. F_BFS(p)')
+        for k in closed_range(1, C):
+            for i in closed_range(k+1, C):
+                for j in closed_range(i + 1, C - 1):
+                    # p_ji => ~p_j+1,k
+                    clause(-bfs_parent[j,i], -bfs_parent[j+1,k])
+
+        comment('12.5. F_m')
+        for i in closed_range(1, C):
+            for j in closed_range(i + 1, C):
+                for k in closed_range(1, K):
+                    # m_kij <=> transition_ikj & AND_k*<k(~transition[ik*j])
+                    bfs_m = bfs_minsymbol[k,i,j]
+                    rhs = [transition[i,k,j]]
+                    for k_ in closed_range(1, k-1):
+                        tr = transition[i,k_,j]
+                        clause(-tr, -bfs_m)
+                        rhs.append(-tr)
+                    clause(*[-r for r in rhs], bfs_m)
+
+        comment('12.6. TODO...')
+
+        log_debug(f'12. Clauses: {next(so_far)}', symbol='DEBUG')
+        # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+
         # Declare any ad-hoc you like
         comment('AD-HOCs')
 
@@ -1594,6 +1652,7 @@ class Instance:
             return
 
         log_debug(f'Writing clauses to <{filename}>...')
+        time_start_write = time.time()
         with tempfile.NamedTemporaryFile('w', delete=False) as f:
             for clause in clauses:
                 if isinstance(clause, str):
@@ -1601,6 +1660,7 @@ class Instance:
                 else:
                     f.write(' '.join(map(str, clause)) + ' 0\n')
         shutil.move(f.name, filename)
+        log_debug(f'Done writing DIMACS in {time.time() - time_start_write:.2f} s')
 
     def write_header(self, reduction, filename):
         if self.is_reuse and os.path.exists(filename):
