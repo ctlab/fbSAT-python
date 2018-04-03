@@ -1069,7 +1069,7 @@ class Instance:
         for c in closed_range(1, C):
             for k in closed_range(1, K):
                 for p in closed_range(1, P - 1):
-                    for ch in closed_range(p+ 1, P):
+                    for ch in closed_range(p + 1, P):
                         clause(-parent[c, k, ch, p], child_left[c, k, p, ch], child_right[c, k, p, ch])
 
         log_debug(f'7. Clauses: {next(so_far)}', symbol='DEBUG')
@@ -1300,25 +1300,27 @@ class Instance:
         for i in closed_range(1, C):
             for j in closed_range(i + 1, C):
                 # t_ij <=> OR_k(transition_ikj)
-                bfs_t = bfs_transition[i, j]
-                tr = transition[i, k, j]
+                aux = bfs_transition[i, j]
                 rhs = []
                 for k in closed_range(1, K):
-                    clause(-tr, bfs_t)
-                    rhs.append(tr)
-                clause(*rhs, -bfs_t)
+                    xi = transition[i, k, j]
+                    clause(-xi, aux)
+                    rhs.append(xi)
+                clause(*rhs, -aux)
 
         comment('12.2. F_p')
         for i in closed_range(1, C):
             for j in closed_range(i + 1, C):
                 # p_ji <=> t_ij & AND_[k<i](~t_kj)
-                bfs_p = bfs_parent[j, i]
-                rhs = [bfs_transition[i, j]]
+                aux = bfs_parent[j, i]
+                xi = bfs_transition[i, j]
+                clause(xi, -aux)
+                rhs = [xi]
                 for k in closed_range(1, i - 1):
-                    bfs_t = bfs_transition[k, j]
-                    clause(-bfs_t, -bfs_p)
-                    rhs.append(-bfs_t)
-                clause(*[-r for r in rhs], bfs_p)
+                    xi = -bfs_transition[k, j]  # negated in formula
+                    clause(xi, -aux)
+                    rhs.append(xi)
+                clause(*[-xi for xi in rhs], aux)
 
         comment('12.3. F_ALO(p)')
         for j in closed_range(2, C):
@@ -1326,25 +1328,33 @@ class Instance:
 
         comment('12.4. F_BFS(p)')
         for k in closed_range(1, C):
-            for i in closed_range(k+1, C):
+            for i in closed_range(k + 1, C):
                 for j in closed_range(i + 1, C - 1):
                     # p_ji => ~p_j+1,k
-                    clause(-bfs_parent[j,i], -bfs_parent[j+1,k])
+                    clause(-bfs_parent[j, i], -bfs_parent[j + 1, k])
 
         comment('12.5. F_m')
         for i in closed_range(1, C):
             for j in closed_range(i + 1, C):
                 for k in closed_range(1, K):
                     # m_kij <=> transition_ikj & AND_k*<k(~transition[ik*j])
-                    bfs_m = bfs_minsymbol[k,i,j]
-                    rhs = [transition[i,k,j]]
-                    for k_ in closed_range(1, k-1):
-                        tr = transition[i,k_,j]
-                        clause(-tr, -bfs_m)
-                        rhs.append(-tr)
-                    clause(*[-r for r in rhs], bfs_m)
+                    aux = bfs_minsymbol[k, i, j]
+                    xi = transition[i, k, j]
+                    clause(xi, -aux)
+                    rhs = [xi]
+                    for k_ in closed_range(1, k - 1):
+                        xi = -transition[i, k_, j]  # negated in formula
+                        clause(xi, -aux)
+                        rhs.append(xi)
+                    clause(*[-xi for xi in rhs], aux)
 
-        comment('12.6. TODO...')
+        comment('12.6. F_BFS(m)')
+        for i in closed_range(1, C):
+            for j in closed_range(i + 1, C - 1):
+                for k in closed_range(1, K):
+                    for k_ in closed_range(1, k - 1):
+                        # p_ji & p_j+1,i & m_kij => ~m_k*,i,j+1
+                        clause(-bfs_parent[j, i], -bfs_parent[j + 1, i], -bfs_minsymbol[k, i, j], -bfs_minsymbol[k_, i, j + 1])
 
         log_debug(f'12. Clauses: {next(so_far)}', symbol='DEBUG')
         # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
@@ -1877,7 +1887,7 @@ def read_names(filename):
               # default='cadical -q', show_default=True,
               help='SAT-solver')
 @click.option('--timeout', type=float, metavar='<float>',
-              default=30, show_default=True,
+              default=0, show_default=True,
               help='Solver timeout')
 @click.option('--min', 'is_minimize', is_flag=True,
               help='Do minimize')
@@ -1889,7 +1899,6 @@ def cli(filename_traces, filename_predicate_names, filename_output_variable_name
     time_start = time.time()
 
     if timeout <= 0:
-        log_warn(f'Not using timeout')
         timeout = None
 
     instance = Instance(C=C, K=K, P=P, N=N,
