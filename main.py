@@ -1404,6 +1404,17 @@ class Instance:
         log_debug(f'Base variables: {number_of_variables}')
         log_debug(f'Base clauses: {number_of_clauses}')
 
+        # ===================
+        length_counter = {}
+        for n in map(len, only_clauses):
+            if n in length_counter:
+                length_counter[n] += 1
+            else:
+                length_counter[n] = 1
+        for l, c in sorted(length_counter.items()):
+            log_debug(f'Clauses of length {l}: {c}', symbol='STAT')
+        # ===================
+
         reduction = Reduction(C=C,
                               K=K,
                               P=P,
@@ -1530,6 +1541,17 @@ class Instance:
         # log_debug(f'Objective unique constraints: {number_of_unique_constraints}')
         # if number_of_constraints != number_of_unique_constraints:
         #     log_warn('Some constraints are duplicated')
+
+        # ===================
+        length_counter = {}
+        for n in map(len, only_clauses):
+            if n in length_counter:
+                length_counter[n] += 1
+            else:
+                length_counter[n] = 1
+        for l, c in sorted(length_counter.items()):
+            log_debug(f'Clauses of length {l}: {c}', symbol='STAT')
+        # ===================
 
         filename_dimacs_objective = self.get_filename_dimacs_objective(reduction)
         self.write_dimacs(clauses, filename_dimacs_objective)
