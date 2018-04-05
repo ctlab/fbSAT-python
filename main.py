@@ -1411,14 +1411,6 @@ class Instance:
         log_debug(f'Base variables: {number_of_variables}')
         log_debug(f'Base clauses: {number_of_clauses}')
 
-        log_debug('Passing base reduction clauses to incremental solver')
-        cmd = '~/Downloads/incremental-lingeling/incremental-lingeling'
-        log_debug(cmd)
-        p = subprocess.Popen(cmd, shell=True, universal_newlines=True,
-                             stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-        for clause in only_clauses:
-            p.stdin.write(' '.join(map(str, clause)) + ' 0\n')
-
         # ===================
         length_counter = {}
         for n in map(len, only_clauses):
@@ -1429,6 +1421,14 @@ class Instance:
         for l, c in sorted(length_counter.items()):
             log_debug(f'Clauses of length {l}: {c}', symbol='STAT')
         # ===================
+
+        log_debug('Passing base reduction clauses to incremental solver')
+        cmd = '~/Downloads/incremental-lingeling/incremental-lingeling'
+        log_debug(cmd)
+        p = subprocess.Popen(cmd, shell=True, universal_newlines=True,
+                             stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        for clause in only_clauses:
+            p.stdin.write(' '.join(map(str, clause)) + ' 0\n')
 
         reduction = Reduction(C=C,
                               K=K,
@@ -1586,7 +1586,6 @@ class Instance:
         clauses = []
 
         def clause(*vs):
-            log_debug(vs)
             clauses.append(vs)
 
         if reduction.N:
@@ -1626,9 +1625,7 @@ class Instance:
         time_start_solve = time.time()
 
         p = reduction.solver_process
-        log_debug('"solve, please"')
         p.stdin.write('solve 0\n')  # TODO: pass timeout?
-        # p.stdin.write('solve 600\n')
         p.stdin.flush()
 
         answer = p.stdout.readline().rstrip()
