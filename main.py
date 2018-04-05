@@ -566,7 +566,7 @@ class Instance:
         reduction.solver_process.stdin.flush()
 
         if solution is None:  # UNSAT
-            log_error('UNSAT')
+            log_error(f'C={C}, K={K}, P={P} is UNSATisfiable')
         else:  # SAT
             self.build_efsm(solution)
             self.verify()
@@ -605,7 +605,7 @@ class Instance:
         reduction.solver_process.stdin.flush()
 
         if last_solution is None:  # completely UNSAT...
-            log_error('COMPLETELY UNSAT')
+            log_error(f'C={C}, K={K}, P={P} is COMPLETELY UNSATisfiable')
         else:  # last_solution is the final answer
             log_success(f'Optimization: best solution with N = {last_solution.reduction.N}')
             self.build_efsm(last_solution)
@@ -638,6 +638,7 @@ class Instance:
             clauses.append(vs)
 
         def comment(s):
+            # log_debug(s)
             clauses.append(s)
 
         def ALO(data):
@@ -1149,9 +1150,12 @@ class Instance:
         comment('10.0. AND/OR nodes cannot have numbers P-1 or P')
         for c in closed_range(1, C):
             for k in closed_range(1, K):
-                for p in [P - 1, P]:
-                    clause(-nodetype[c, k, p, 1])
-                    clause(-nodetype[c, k, p, 2])
+                if P >=1 :
+                    clause(-nodetype[c, k, P, 1])
+                    clause(-nodetype[c, k, P, 2])
+                if P >= 2:
+                    clause(-nodetype[c, k, P - 1, 1])
+                    clause(-nodetype[c, k, P - 1, 2])
 
         comment('10.1. AND/OR: left child has greater number')
         for c in closed_range(1, C):
@@ -1423,12 +1427,9 @@ class Instance:
         # ===================
 
         log_debug('Passing base reduction clauses to incremental solver')
-        cmd = '~/Downloads/incremental-lingeling/incremental-lingeling'
-        log_debug(cmd)
-        p = subprocess.Popen(cmd, shell=True, universal_newlines=True,
+        p = subprocess.Popen(['./incremental-lingeling'], universal_newlines=True,
                              stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-        for clause in only_clauses:
-            p.stdin.write(' '.join(map(str, clause)) + ' 0\n')
+        self.write_clauses(p.stdin, only_clauses, desc='Base reduction clauses')
 
         reduction = Reduction(C=C,
                               K=K,
@@ -1556,8 +1557,7 @@ class Instance:
         #     log_warn('Some constraints are duplicated')
 
         log_debug('Passing objective function clauses to incremental solver')
-        for clause in only_clauses:
-            reduction.solver_process.stdin.write(' '.join(map(str, clause)) + ' 0\n')
+        self.write_clauses(reduction.solver_process.stdin, only_clauses, 'Objective function clauses')
 
         # ===================
         length_counter = {}
@@ -1609,8 +1609,7 @@ class Instance:
         #     log_warn('Some clauses are duplicated')
 
         log_debug('Passing cardinality clauses to incremental solver')
-        for clause in clauses:
-            reduction.solver_process.stdin.write(' '.join(map(str, clause)) + ' 0\n')
+        self.write_clauses(reduction.solver_process.stdin, clauses, 'Cardinality clauses')
 
         reduction = reduction._replace(
             N=N,
@@ -1632,90 +1631,26 @@ class Instance:
 
         if answer == 'SAT':
             log_success(f'SAT in {time.time() - time_start_solve:.2f} s')
-
             line_assignment = p.stdout.readline().rstrip()
             if line_assignment.startswith('v '):
                 raw_assignment = [None] + list(map(int, line_assignment[2:].split()))
+                return Solution.from_raw_assignment(raw_assignment, reduction)
             else:
                 log_error('Error reading line with assignment')
-                return None
-
-            return Solution.from_raw_assignment(raw_assignment, reduction)
-
         elif answer == 'UNSAT':
             log_error(f'UNSAT in {time.time() - time_start_solve:.2f} s')
         elif answer == 'UNKNOWN':
             log_error(f'UNKNOWN in {time.time() - time_start_solve:.2f} s')
 
-    def get_filename_dimacs_base(self, reduction):
-        C, K, P = reduction.C, reduction.K, reduction.P
-        return f'{self.basename_formula}_C{C}_K{K}_P{P}_base.dimacs'
+    def write_clauses(self, stream, clauses, desc='Clauses'):
+        from tqdm import tqdm
+        for clause in tqdm(clauses, desc=desc):
+            stream.write(' '.join(map(str, clause)) + ' 0\n')
 
-    def get_filename_dimacs_objective(self, reduction):
-        C, K, P = reduction.C, reduction.K, reduction.P
-        return f'{self.basename_formula}_C{C}_K{K}_P{P}_objective.dimacs'
-
-    def get_filename_dimacs_cardinality(self, reduction):
-        C, K, P, N = reduction.C, reduction.K, reduction.P, reduction.N
-        return f'{self.basename_formula}_C{C}_K{K}_P{P}_N{N}_cardinality.dimacs'
-
-    def get_filename_header(self, reduction):
-        C, K, P, N = reduction.C, reduction.K, reduction.P, reduction.N
-        return f'{self.basename_formula}_C{C}_K{K}_P{P}_N{N}_header.dimacs'
-
-    def get_filename_merged(self, reduction):
-        C, K, P, N = reduction.C, reduction.K, reduction.P, reduction.N
-        if N is not None:
-            return f'{self.basename_formula}_C{C}_K{K}_P{P}_N{N}_merged.dimacs'
-        else:
-            return f'{self.basename_formula}_C{C}_K{K}_P{P}_merged.dimacs'
-
-    def get_filenames(self, reduction):
-        if reduction.N is not None:
-            return ' '.join((self.get_filename_header(reduction),
-                             self.get_filename_dimacs_base(reduction),
-                             self.get_filename_dimacs_objective(reduction),
-                             self.get_filename_dimacs_cardinality(reduction)))
-        else:
-            return ' '.join((self.get_filename_header(reduction),
-                             self.get_filename_dimacs_base(reduction)))
-
-    def write_dimacs(self, clauses, filename):
-        if self.is_reuse and os.path.exists(filename):
-            log_debug(f'Reusing clauses from <{filename}>')
-            return
-
-        log_debug(f'Writing clauses to <{filename}>...')
-        time_start_write = time.time()
-        with tempfile.NamedTemporaryFile('w', delete=False) as f:
-            for clause in clauses:
-                if isinstance(clause, str):
-                    f.write('c ' + clause + '\n')
-                else:
-                    f.write(' '.join(map(str, clause)) + ' 0\n')
-        shutil.move(f.name, filename)
-        log_debug(f'Done writing DIMACS in {time.time() - time_start_write:.2f} s')
-
-    def write_header(self, reduction, filename):
-        if self.is_reuse and os.path.exists(filename):
-            log_debug(f'Reusing header from <{filename}>')
-            return
-
-        log_debug(f'Writing header to <{filename}>...')
-        with click.open_file(filename, 'w') as f:
-            number_of_variables = reduction.number_of_base_variables + reduction.number_of_objective_variables
-            number_of_clauses = reduction.number_of_base_clauses + reduction.number_of_objective_clauses + reduction.number_of_cardinality_clauses
-            f.write(f'p cnf {number_of_variables} {number_of_clauses}\n')
-
-    def write_merged(self, reduction, filename):
-        if self.is_reuse and os.path.exists(filename):
-            log_debug(f'Reusing merged reduction from <{filename}>')
-            return
-
-        log_debug(f'Writing merged reduction to <{filename}>...')
-        cmd_cat = f'cat {self.get_filenames(reduction)} > {filename}'
-        log_debug(cmd_cat)
-        subprocess.run(cmd_cat, shell=True)
+    def write_clauses_binary(self, stream, clauses, desc='Clauses'):
+        from tqdm import tqdm
+        for clause in tqdm(clauses, desc=desc):
+            stream.write((' '.join(map(str, clause)) + ' 0\n').encode())
 
     def build_efsm(self, solution):
         log_info('Building EFSM...')
