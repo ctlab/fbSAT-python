@@ -756,6 +756,10 @@ class Instance:
         fired_only = declare_array(C, K, U, with_zero=False)
         not_fired = declare_array(C, K, U, with_zero=False)
 
+        bfs_transition = declare_array(C, C, with_zero=False)
+        bfs_parent = declare_array(C, C, with_zero=False)
+        # bfs_minsymbol = declare_array(K, C, C, with_zero=False)
+
         # log_debug(f'color:\n{color}')
         # log_debug(f'transition:\n{transition}')
         # log_debug(f'trans_event:\n{trans_event}')
@@ -1298,6 +1302,70 @@ class Instance:
         log_debug(f'11. Clauses: {next(so_far)}', symbol='DEBUG')
         # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 
+        comment('12. BFS constraints')
+        comment('12.1. F_t')
+        for i in closed_range(1, C):
+            for j in closed_range(i + 1, C):
+                # t_ij <=> OR_k(transition_ikj)
+                aux = bfs_transition[i, j]
+                rhs = []
+                for k in closed_range(1, K):
+                    xi = transition[i, k, j]
+                    clause(-xi, aux)
+                    rhs.append(xi)
+                clause(*rhs, -aux)
+
+        comment('12.2. F_p')
+        for i in closed_range(1, C):
+            for j in closed_range(i + 1, C):
+                # p_ji <=> t_ij & AND_[k<i](~t_kj)
+                aux = bfs_parent[j, i]
+                xi = bfs_transition[i, j]
+                clause(xi, -aux)
+                rhs = [xi]
+                for k in closed_range(1, i - 1):
+                    xi = -bfs_transition[k, j]  # negated in formula
+                    clause(xi, -aux)
+                    rhs.append(xi)
+                clause(*[-xi for xi in rhs], aux)
+
+        comment('12.3. F_ALO(p)')
+        for j in closed_range(2, C):
+            clause(*[bfs_parent[j, i] for i in closed_range(1, j - 1)])
+
+        comment('12.4. F_BFS(p)')
+        for k in closed_range(1, C):
+            for i in closed_range(k + 1, C):
+                for j in closed_range(i + 1, C - 1):
+                    # p_ji => ~p_j+1,k
+                    clause(-bfs_parent[j, i], -bfs_parent[j + 1, k])
+
+        # comment('12.5. F_m')
+        # for i in closed_range(1, C):
+        #     for j in closed_range(i + 1, C):
+        #         for k in closed_range(1, K):
+        #             # m_kij <=> transition_ikj & AND_k*<k(~transition[ik*j])
+        #             aux = bfs_minsymbol[k, i, j]
+        #             xi = transition[i, k, j]
+        #             clause(xi, -aux)
+        #             rhs = [xi]
+        #             for k_ in closed_range(1, k - 1):
+        #                 xi = -transition[i, k_, j]  # negated in formula
+        #                 clause(xi, -aux)
+        #                 rhs.append(xi)
+        #             clause(*[-xi for xi in rhs], aux)
+
+        # comment('12.6. F_BFS(m)')
+        # for i in closed_range(1, C):
+        #     for j in closed_range(i + 1, C - 1):
+        #         for k in closed_range(1, K):
+        #             for k_ in closed_range(1, k - 1):
+        #                 # p_ji & p_j+1,i & m_kij => ~m_k*,i,j+1
+        #                 clause(-bfs_parent[j, i], -bfs_parent[j + 1, i], -bfs_minsymbol[k, i, j], -bfs_minsymbol[k_, i, j + 1])
+
+        log_debug(f'12. Clauses: {next(so_far)}', symbol='DEBUG')
+        # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+
         # Declare any ad-hoc you like
         comment('AD-HOCs')
 
@@ -1350,6 +1418,17 @@ class Instance:
                              stdin=subprocess.PIPE, stdout=subprocess.PIPE)
         for clause in only_clauses:
             p.stdin.write(' '.join(map(str, clause)) + ' 0\n')
+
+        # ===================
+        length_counter = {}
+        for n in map(len, only_clauses):
+            if n in length_counter:
+                length_counter[n] += 1
+            else:
+                length_counter[n] = 1
+        for l, c in sorted(length_counter.items()):
+            log_debug(f'Clauses of length {l}: {c}', symbol='STAT')
+        # ===================
 
         reduction = Reduction(C=C,
                               K=K,
@@ -1480,6 +1559,17 @@ class Instance:
         for clause in only_clauses:
             reduction.solver_process.stdin.write(' '.join(map(str, clause)) + ' 0\n')
 
+        # ===================
+        length_counter = {}
+        for n in map(len, only_clauses):
+            if n in length_counter:
+                length_counter[n] += 1
+            else:
+                length_counter[n] = 1
+        for l, c in sorted(length_counter.items()):
+            log_debug(f'Clauses of length {l}: {c}', symbol='STAT')
+        # ===================
+
         log_success(f'Done generating objective function in {time.time() - time_start_objective:.2f} s')
         log_br()
 
@@ -1599,6 +1689,7 @@ class Instance:
             return
 
         log_debug(f'Writing clauses to <{filename}>...')
+        time_start_write = time.time()
         with tempfile.NamedTemporaryFile('w', delete=False) as f:
             for clause in clauses:
                 if isinstance(clause, str):
@@ -1606,6 +1697,7 @@ class Instance:
                 else:
                     f.write(' '.join(map(str, clause)) + ' 0\n')
         shutil.move(f.name, filename)
+        log_debug(f'Done writing DIMACS in {time.time() - time_start_write:.2f} s')
 
     def write_header(self, reduction, filename):
         if self.is_reuse and os.path.exists(filename):
@@ -1822,7 +1914,7 @@ def read_names(filename):
               # default='cadical -q', show_default=True,
               help='SAT-solver')
 @click.option('--timeout', type=float, metavar='<float>',
-              default=30, show_default=True,
+              default=0, show_default=True,
               help='Solver timeout')
 @click.option('--min', 'is_minimize', is_flag=True,
               help='Do minimize')
@@ -1834,7 +1926,6 @@ def cli(filename_traces, filename_predicate_names, filename_output_variable_name
     time_start = time.time()
 
     if timeout <= 0:
-        log_warn(f'Not using timeout')
         timeout = None
 
     instance = Instance(C=C, K=K, P=P, N=N,
