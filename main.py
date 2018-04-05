@@ -15,7 +15,7 @@ GlobalState = {}
 
 NAN = 2**31 - 1
 
-Reduction = namedtuple('Reduction', 'C K P N number_of_base_variables number_of_base_clauses number_of_objective_variables number_of_objective_clauses number_of_cardinality_clauses color transition trans_event output_event algorithm_0 algorithm_1 nodetype terminal child_left child_right parent value child_value_left child_value_right fired_only not_fired objective')
+Reduction = namedtuple('Reduction', 'C K P N solver_process number_of_base_variables number_of_base_clauses number_of_objective_variables number_of_objective_clauses number_of_cardinality_clauses color transition trans_event output_event algorithm_0 algorithm_1 nodetype terminal child_left child_right parent value child_value_left child_value_right fired_only not_fired objective')
 Assignment = namedtuple('Assignment', 'color transition trans_event output_event algorithm_0 algorithm_1 nodetype terminal child_left child_right parent value child_value_left child_value_right fired_only not_fired')
 
 
@@ -562,6 +562,9 @@ class Instance:
         solution = self.solve(reduction)
         log_br()
 
+        reduction.solver_process.stdin.write('halt\n')
+        reduction.solver_process.stdin.flush()
+
         if solution is None:  # UNSAT
             log_error('UNSAT')
         else:  # SAT
@@ -581,14 +584,15 @@ class Instance:
 
         reduction_base = self.generate_base_reduction(C, K, P)
         reduction_obj = self.generate_objective_function(reduction_base)
+        reduction = reduction_obj
 
         last_solution = None
         N_try = N
         while True:
             log_info(f'Optimization: trying N = {N_try}...')
             log_br()
-            reduction_card = self.generate_cardinality(N_try, reduction_obj)
-            solution = self.solve(reduction_card)
+            reduction = self.generate_cardinality(N_try, reduction)
+            solution = self.solve(reduction)
             log_br()
 
             if solution is None:  # UNSAT
@@ -596,6 +600,9 @@ class Instance:
             else:  # SAT
                 last_solution = solution
                 N_try = solution.number_of_nodes - 1
+
+        reduction.solver_process.stdin.write('halt\n')
+        reduction.solver_process.stdin.flush()
 
         if last_solution is None:  # completely UNSAT...
             log_error('COMPLETELY UNSAT')
@@ -1336,10 +1343,19 @@ class Instance:
         log_debug(f'Base variables: {number_of_variables}')
         log_debug(f'Base clauses: {number_of_clauses}')
 
+        log_debug('Passing base reduction clauses to incremental solver')
+        cmd = '~/Downloads/incremental-lingeling/incremental-lingeling'
+        log_debug(cmd)
+        p = subprocess.Popen(cmd, shell=True, universal_newlines=True,
+                             stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        for clause in only_clauses:
+            p.stdin.write(' '.join(map(str, clause)) + ' 0\n')
+
         reduction = Reduction(C=C,
                               K=K,
                               P=P,
                               N=None,
+                              solver_process=p,
                               number_of_base_variables=number_of_variables,
                               number_of_base_clauses=number_of_clauses,
                               number_of_objective_variables=0,
@@ -1362,9 +1378,6 @@ class Instance:
                               fired_only=fired_only,
                               not_fired=not_fired,
                               objective=None)
-
-        filename_dimacs_base = self.get_filename_dimacs_base(reduction)
-        self.write_dimacs(clauses, filename_dimacs_base)
 
         log_success(f'Done generating base reduction in {time.time() - time_start_generate:.2f} s')
         log_br()
@@ -1463,8 +1476,9 @@ class Instance:
         # if number_of_constraints != number_of_unique_constraints:
         #     log_warn('Some constraints are duplicated')
 
-        filename_dimacs_objective = self.get_filename_dimacs_objective(reduction)
-        self.write_dimacs(clauses, filename_dimacs_objective)
+        log_debug('Passing objective function clauses to incremental solver')
+        for clause in only_clauses:
+            reduction.solver_process.stdin.write(' '.join(map(str, clause)) + ' 0\n')
 
         log_success(f'Done generating objective function in {time.time() - time_start_objective:.2f} s')
         log_br()
@@ -1482,37 +1496,37 @@ class Instance:
         clauses = []
 
         def clause(*vs):
+            log_debug(vs)
             clauses.append(vs)
 
-        def comment(s):
-            clauses.append(s)
+        if reduction.N:
+            N_max = reduction.N  # FIXME: check whether -1 is needed
+        else:
+            N_max = reduction.C * reduction.K * reduction.P
 
-        C, K, P = reduction.C, reduction.K, reduction.P
-
-        comment('Objective function: sum(E) <= N')
-        for i in closed_range(N + 1, C * K * P):
+        # sum(E) < N+1
+        for i in closed_range(N + 1, N_max):
             clause(-reduction.objective[i - 1])
 
         # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 
-        only_clauses = [clause for clause in clauses if not isinstance(clause, str)]
-
-        number_of_clauses = len(only_clauses)
+        number_of_clauses = len(clauses)
         # TODO: count unique clauses
-        # number_of_unique_clauses = len(set(only_clauses))
+        # number_of_unique_clauses = len(set(clauses))
 
         log_debug(f'Cardinality clauses: {number_of_clauses}')
         # log_debug(f'Cardinality unique clauses: {number_of_unique_clauses}')
         # if number_of_clauses != number_of_unique_clauses:
         #     log_warn('Some clauses are duplicated')
 
+        log_debug('Passing cardinality clauses to incremental solver')
+        for clause in clauses:
+            reduction.solver_process.stdin.write(' '.join(map(str, clause)) + ' 0\n')
+
         reduction = reduction._replace(
             N=N,
-            number_of_cardinality_clauses=number_of_clauses
+            number_of_cardinality_clauses=reduction.number_of_cardinality_clauses+number_of_clauses
         )
-
-        filename_dimacs_cardinality = self.get_filename_dimacs_cardinality(reduction)
-        self.write_dimacs(clauses, filename_dimacs_cardinality)
 
         log_success(f'Done generating cardinality in {time.time() - time_start_cardinality:.2f} s')
         return reduction
@@ -1521,27 +1535,10 @@ class Instance:
         log_info(f'Solving...')
         time_start_solve = time.time()
 
-        filename_header = self.get_filename_header(reduction)
-        self.write_header(reduction, filename_header)
-
-        filename_merged = self.get_filename_merged(reduction)
-        self.write_merged(reduction, filename_merged)
-
-        cmd = '~/Downloads/incremental-lingeling/incremental-lingeling'
-        log_debug(cmd)
-        p = subprocess.Popen(cmd, shell=True, universal_newlines=True,
-                             stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-
-        with open(filename_merged) as f:
-            for line in f:
-                if not line.startswith('p cnf') and not line.startswith('c '):
-                    p.stdin.write(line)
-                    # log_debug(line, nl=False)
-        log_debug('Ask to solve')
+        p = reduction.solver_process
+        log_debug('"solve, please"')
         p.stdin.write('solve 0\n')  # TODO: pass timeout?
-        # =============
-        p.stdin.write('halt\n')
-        # =============
+        # p.stdin.write('solve 600\n')
         p.stdin.flush()
 
         answer = p.stdout.readline().rstrip()
