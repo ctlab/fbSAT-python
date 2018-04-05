@@ -1065,7 +1065,7 @@ class Instance:
         for c in closed_range(1, C):
             for k in closed_range(1, K):
                 for p in closed_range(1, P - 1):
-                    for ch in closed_range(p+ 1, P):
+                    for ch in closed_range(p + 1, P):
                         clause(-parent[c, k, ch, p], child_left[c, k, p, ch], child_right[c, k, p, ch])
 
         log_debug(f'7. Clauses: {next(so_far)}', symbol='DEBUG')
@@ -1527,33 +1527,41 @@ class Instance:
         filename_merged = self.get_filename_merged(reduction)
         self.write_merged(reduction, filename_merged)
 
-        cmd = f'{self.solver} {filename_merged}'
+        cmd = '~/Downloads/incremental-lingeling/incremental-lingeling'
         log_debug(cmd)
-        try:
-            p = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE,
-                               universal_newlines=True, timeout=self.timeout)
-        except subprocess.TimeoutExpired:
-            log_error(f'Timeout in {time.time() - time_start_solve:.2f} s')
-            return
+        p = subprocess.Popen(cmd, shell=True, universal_newlines=True,
+                             stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 
-        if p.returncode == 10:
+        with open(filename_merged) as f:
+            for line in f:
+                if not line.startswith('p cnf') and not line.startswith('c '):
+                    p.stdin.write(line)
+                    # log_debug(line, nl=False)
+        log_debug('Ask to solve')
+        p.stdin.write('solve 0\n')  # TODO: pass timeout?
+        # =============
+        p.stdin.write('halt\n')
+        # =============
+        p.stdin.flush()
+
+        answer = p.stdout.readline().rstrip()
+
+        if answer == 'SAT':
             log_success(f'SAT in {time.time() - time_start_solve:.2f} s')
 
-            raw_assignment = [None]  # now 1-based
-            for line in p.stdout.split('\n'):
-                if line.startswith('v'):
-                    for value in map(int, regex.findall(r'-?\d+', line)):
-                        if value == 0:
-                            break
-                        assert abs(value) == len(raw_assignment)
-                        raw_assignment.append(value)
+            line_assignment = p.stdout.readline().rstrip()
+            if line_assignment.startswith('v '):
+                raw_assignment = [None] + list(map(int, line_assignment[2:].split()))
+            else:
+                log_error('Error reading line with assignment')
+                return None
 
             return Solution.from_raw_assignment(raw_assignment, reduction)
 
-        elif p.returncode == 20:
+        elif answer == 'UNSAT':
             log_error(f'UNSAT in {time.time() - time_start_solve:.2f} s')
-        else:
-            log_error(f'returncode {p.returncode} in {time.time() - time_start_solve:.2f} s')
+        elif answer == 'UNKNOWN':
+            log_error(f'UNKNOWN in {time.time() - time_start_solve:.2f} s')
 
     def get_filename_dimacs_base(self, reduction):
         C, K, P = reduction.C, reduction.K, reduction.P
