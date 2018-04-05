@@ -1333,28 +1333,28 @@ class Instance:
                     # p_ji => ~p_j+1,k
                     clause(-bfs_parent[j, i], -bfs_parent[j + 1, k])
 
-        comment('12.5. F_m')
-        for i in closed_range(1, C):
-            for j in closed_range(i + 1, C):
-                for k in closed_range(1, K):
-                    # m_kij <=> transition_ikj & AND_k*<k(~transition[ik*j])
-                    aux = bfs_minsymbol[k, i, j]
-                    xi = transition[i, k, j]
-                    clause(xi, -aux)
-                    rhs = [xi]
-                    for k_ in closed_range(1, k - 1):
-                        xi = -transition[i, k_, j]  # negated in formula
-                        clause(xi, -aux)
-                        rhs.append(xi)
-                    clause(*[-xi for xi in rhs], aux)
+        # comment('12.5. F_m')
+        # for i in closed_range(1, C):
+        #     for j in closed_range(i + 1, C):
+        #         for k in closed_range(1, K):
+        #             # m_kij <=> transition_ikj & AND_k*<k(~transition[ik*j])
+        #             aux = bfs_minsymbol[k, i, j]
+        #             xi = transition[i, k, j]
+        #             clause(xi, -aux)
+        #             rhs = [xi]
+        #             for k_ in closed_range(1, k - 1):
+        #                 xi = -transition[i, k_, j]  # negated in formula
+        #                 clause(xi, -aux)
+        #                 rhs.append(xi)
+        #             clause(*[-xi for xi in rhs], aux)
 
-        comment('12.6. F_BFS(m)')
-        for i in closed_range(1, C):
-            for j in closed_range(i + 1, C - 1):
-                for k in closed_range(1, K):
-                    for k_ in closed_range(1, k - 1):
-                        # p_ji & p_j+1,i & m_kij => ~m_k*,i,j+1
-                        clause(-bfs_parent[j, i], -bfs_parent[j + 1, i], -bfs_minsymbol[k, i, j], -bfs_minsymbol[k_, i, j + 1])
+        # comment('12.6. F_BFS(m)')
+        # for i in closed_range(1, C):
+        #     for j in closed_range(i + 1, C - 1):
+        #         for k in closed_range(1, K):
+        #             for k_ in closed_range(1, k - 1):
+        #                 # p_ji & p_j+1,i & m_kij => ~m_k*,i,j+1
+        #                 clause(-bfs_parent[j, i], -bfs_parent[j + 1, i], -bfs_minsymbol[k, i, j], -bfs_minsymbol[k_, i, j + 1])
 
         log_debug(f'12. Clauses: {next(so_far)}', symbol='DEBUG')
         # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
