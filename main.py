@@ -147,6 +147,7 @@ class ScenarioTree(treelib.Tree):
             for element in scenario.elements:
                 for child in self.children(current.identifier):
                     if child.data.input_event == element.input_event and child.data.input_values == element.input_values:
+                        current = child
                         break
                 else:
                     current = self.create_node(identifier=next(clock),
@@ -652,7 +653,7 @@ class Instance:
         reduction.solver_process.kill()
 
         if solution is None:  # UNSAT
-            log_error(f'C={C}, K={K}, P={P} is UNSATisfiable')
+            log_error(f'C={C}, K={K}, P={P}, N={N} is UNSATisfiable')
         else:  # SAT
             self.build_efsm(solution)
             self.verify()
