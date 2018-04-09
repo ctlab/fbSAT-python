@@ -564,6 +564,7 @@ class Instance:
 
         reduction.solver_process.stdin.write('halt\n')
         reduction.solver_process.stdin.flush()
+        reduction.solver_process.kill()
 
         if solution is None:  # UNSAT
             log_error(f'C={C}, K={K}, P={P} is UNSATisfiable')
@@ -603,6 +604,7 @@ class Instance:
 
         reduction.solver_process.stdin.write('halt\n')
         reduction.solver_process.stdin.flush()
+        reduction.solver_process.kill()
 
         if last_solution is None:  # completely UNSAT...
             log_error(f'C={C}, K={K}, P={P} is COMPLETELY UNSATisfiable')
@@ -1150,7 +1152,7 @@ class Instance:
         comment('10.0. AND/OR nodes cannot have numbers P-1 or P')
         for c in closed_range(1, C):
             for k in closed_range(1, K):
-                if P >=1 :
+                if P >= 1:
                     clause(-nodetype[c, k, P, 1])
                     clause(-nodetype[c, k, P, 2])
                 if P >= 2:
@@ -1429,7 +1431,7 @@ class Instance:
         log_debug('Passing base reduction clauses to incremental solver')
         p = subprocess.Popen(['./incremental-lingeling'], universal_newlines=True,
                              stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-        self.write_clauses(p.stdin, only_clauses, desc='Base reduction clauses')
+        self.write_clauses(p.stdin, only_clausesm, desc='base reduction')
 
         reduction = Reduction(C=C,
                               K=K,
@@ -1557,7 +1559,7 @@ class Instance:
         #     log_warn('Some constraints are duplicated')
 
         log_debug('Passing objective function clauses to incremental solver')
-        self.write_clauses(reduction.solver_process.stdin, only_clauses, 'Objective function clauses')
+        self.write_clauses(reduction.solver_process.stdin, only_clauses, 'objective function')
 
         # ===================
         length_counter = {}
@@ -1609,11 +1611,11 @@ class Instance:
         #     log_warn('Some clauses are duplicated')
 
         log_debug('Passing cardinality clauses to incremental solver')
-        self.write_clauses(reduction.solver_process.stdin, clauses, 'Cardinality clauses')
+        self.write_clauses(reduction.solver_process.stdin, clauses, 'cardinality')
 
         reduction = reduction._replace(
             N=N,
-            number_of_cardinality_clauses=reduction.number_of_cardinality_clauses+number_of_clauses
+            number_of_cardinality_clauses=reduction.number_of_cardinality_clauses + number_of_clauses
         )
 
         log_success(f'Done generating cardinality in {time.time() - time_start_cardinality:.2f} s')
@@ -1642,15 +1644,10 @@ class Instance:
         elif answer == 'UNKNOWN':
             log_error(f'UNKNOWN in {time.time() - time_start_solve:.2f} s')
 
-    def write_clauses(self, stream, clauses, desc='Clauses'):
-        from tqdm import tqdm
-        for clause in tqdm(clauses, desc=desc):
+    def write_clauses(self, stream, clauses, *, desc='fancy'):
+        log_debug(f'Writing {desc} clauses...')
+        for clause in clauses:
             stream.write(' '.join(map(str, clause)) + ' 0\n')
-
-    def write_clauses_binary(self, stream, clauses, desc='Clauses'):
-        from tqdm import tqdm
-        for clause in tqdm(clauses, desc=desc):
-            stream.write((' '.join(map(str, clause)) + ' 0\n').encode())
 
     def build_efsm(self, solution):
         log_info('Building EFSM...')
