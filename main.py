@@ -145,9 +145,13 @@ class ScenarioTree(treelib.Tree):
         for scenario in scenarios:
             current = root
             for element in scenario.elements:
-                current = self.create_node(identifier=next(clock),
-                                           parent=current,
-                                           data=element)
+                for child in self.children(current.identifier):
+                    if child.data.input_event == element.input_event and child.data.input_values == element.input_values:
+                        break
+                else:
+                    current = self.create_node(identifier=next(clock),
+                                               parent=current,
+                                               data=element)
 
     @property
     def predicate_names(self):
