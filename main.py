@@ -1,8 +1,6 @@
 import os
 import time
 import regex
-import shutil
-import tempfile
 import subprocess
 from itertools import count, product
 from collections import deque, namedtuple, OrderedDict
@@ -10,6 +8,7 @@ from collections import deque, namedtuple, OrderedDict
 import click
 import treelib  # pip
 import numpy as np
+from lxml import etree
 
 GlobalState = {}
 
@@ -358,19 +357,28 @@ class Guard:
         def __str__(self):
             if self.nodetype == 0:  # Terminal
                 return GlobalState['predicate_names'][self.terminal - 1]
-
             elif self.nodetype == 1:  # AND
                 return f'({self.child_left} & {self.child_right})'
-
             elif self.nodetype == 2:  # OR
                 return f'({self.child_left} | {self.child_right})'
-
             elif self.nodetype == 3:  # NOT
+                # FIXME: why do we need this dispatch? Seems like first branch is enough
                 if self.child_left.nodetype == 0:
                     return f'~{self.child_left}'
                 else:
                     return f'~({self.child_left})'
+            elif self.nodetype == 4:  # None
+                raise ValueError(f'why are you trying to display None-typed node?')
 
+        def __str_nice__(self):
+            if self.nodetype == 0:  # Terminal
+                return str(self)
+            elif self.nodetype == 1:  # AND
+                return f'({self.child_left.__str_nice__()} AND {self.child_right.__str_nice__()})'
+            elif self.nodetype == 2:  # OR
+                return f'({self.child_left.__str_nice__()} OR {self.child_right.__str_nice__()})'
+            elif self.nodetype == 3:  # NOT
+                return f'NOT {self.child_left.__str_nice__()}'
             elif self.nodetype == 4:  # None
                 raise ValueError(f'why are you trying to display None-typed node?')
 
@@ -395,6 +403,9 @@ class Guard:
 
     def __str__(self):
         return str(self.root)
+
+    def __str_nice__(self):
+        return self.root.__str_nice__()
 
 
 class EFSM:
@@ -447,7 +458,8 @@ class EFSM:
         def __repr__(self):
             return f'State(id={self.id}, output_event={self.output_event}, algorithm_0={self.algorithm_0}, algorithm_1={self.algorithm_1})'
 
-    def __init__(self):
+    def __init__(self, instance):
+        self.instance = instance
         self.states = OrderedDict()
         self.initial_state = None
 
@@ -486,25 +498,93 @@ class EFSM:
                 log_debug(f'├──{transition}')
             log_debug(f'└──{state.transitions[-1]}')
 
+    def get_gv_string(self):
+        state_numbers = {state: i for i, state in enumerate(self.states.values())}
+        lines = ['digraph {',
+                 '    // States',
+                 '    { node []',
+                 *(f'      {state_numbers[state]} [label="{state.id}: {state.output_event}({state.algorithm_0}_{state.algorithm_1})"]'
+                   for state in self.states.values()),
+                 '    }',
+                 '    // Transitions',
+                 *(f'    {state_numbers[transition.source]} -> {state_numbers[transition.destination]} [label="{transition.input_event} [{transition.guard}]"]'
+                     for state in self.states.values() for transition in state.transitions),
+                 '}']
+        return '\n'.join(lines)
+
+    def get_fbt_string(self):
+        tree = self.instance.tree
+        FBType = etree.Element('FBType')
+
+        etree.SubElement(FBType, 'Identification', Standard='61499-2')
+        etree.SubElement(FBType, 'VersionInfo', Organization='nxtControl GmbH', Version='0.0', Author='fbSAT', Date='2011-08-30', Remarks='Template')
+        InterfaceList = etree.SubElement(FBType, 'InterfaceList')
+        BasicFB = etree.SubElement(FBType, 'BasicFB')
+
+        InputVars = etree.SubElement(InterfaceList, 'InputVars')
+        OutputVars = etree.SubElement(InterfaceList, 'OutputVars')
+        EventInputs = etree.SubElement(InterfaceList, 'EventInputs')
+        EventOutputs = etree.SubElement(InterfaceList, 'EventOutputs')
+
+        # InterfaceList::InputVars declaration
+        for input_variable_name in tree.predicate_names:
+            etree.SubElement(InputVars, 'VarDeclaration', Name=input_variable_name, Type='BOOL')
+
+        # InterfaceList::OutputVars declaration
+        for output_variable_name in tree.output_variable_names:
+            etree.SubElement(OutputVars, 'VarDeclaration', Name=output_variable_name, Type='BOOL')
+
+        # InterfaceList::EventInputs declaration
+        for input_event in tree.input_events:
+            e = etree.SubElement(EventInputs, 'Event', Name=input_event)
+            if input_event != 'INIT':
+                for input_variable_name in tree.predicate_names:
+                    etree.SubElement(e, 'With', Var=input_variable_name)
+
+        # InterfaceList::EventOutputs declaration
+        for output_event in tree.output_events:
+            e = etree.SubElement(EventOutputs, 'Event', Name=output_event)
+            if output_event != 'INITO':
+                for output_variable_name in tree.output_variable_names:
+                    etree.SubElement(e, 'With', Var=output_variable_name)
+
+        # BasicFB::ECC declaration
+        ECC = etree.SubElement(BasicFB, 'ECC')
+        etree.SubElement(ECC, 'ECState', Name='START', Comment='Initial state')
+        # state_init = etree.SubElement(ECC, 'ECState', Name='INIT', Comment='Initialization')
+        # etree.SubElement(state_init, 'ECAction', Algorithm='INIT', Output='INITO')
+        for state in self.states.values():
+            s = etree.SubElement(ECC, 'ECState', Name=f's_{state.id}')
+            etree.SubElement(s, 'ECAction', Algorithm=f'{state.output_event}_{state.algorithm_0}_{state.algorithm_1}')
+
+        etree.SubElement(ECC, 'ECTransition', Source='START', Destination=f's_1', Condition='INIT')
+        for transition in self.transitions:
+            etree.SubElement(ECC, 'ECTransition',
+                             Source=f's_{transition.source.id}',
+                             Destination=f's_{transition.destination.id}',
+                             Condition=f'{transition.input_event}&{transition.guard.__str_nice__()}')
+
+        # BasicFB::Algorithms declaration
+        algorithms = set()
+        for state in self.states.values():
+            algorithms.add((state.output_event, state.algorithm_0, state.algorithm_1))
+        for output_event, algorithm_0, algorithm_1 in algorithms:
+            a = etree.SubElement(BasicFB, 'Algorithm', Name=f'{output_event}_{algorithm_0}_{algorithm_1}')
+            etree.SubElement(a, 'ST', Text=algorithm2st(algorithm_0, algorithm_1))
+
+        return etree.tostring(FBType, encoding='UTF-8', xml_declaration=True, pretty_print=True).decode()
+
     def write_gv(self, filename):
         log_debug(f'Dumping EFSM to <{filename}>...')
 
         with open(filename, 'w') as f:
-            f.write('digraph {\n')
-            state_numbers = {state: i for i, state in enumerate(self.states.values())}
+            f.write(self.get_gv_string() + '\n')
 
-            f.write('    // States\n')
-            f.write('    { node []\n')
-            for state in self.states.values():
-                f.write(f'      {state_numbers[state]} [label="{state.id}: {state.output_event}({state.algorithm_0}_{state.algorithm_1})"]\n')
-            f.write('    }\n')
+    def write_fbt(self, filename):
+        log_debug(f'Dumping EFSM to <{filename}>...')
 
-            f.write('    // Transitions\n')
-            for state in self.states.values():
-                for transition in state.transitions:
-                    f.write(f'    {state_numbers[transition.source]} -> {state_numbers[transition.destination]} [label="{transition.input_event} [{transition.guard}]"]\n')
-
-            f.write('}\n')
+        with open(filename, 'w') as f:
+            f.write(self.get_fbt_string())
 
 
 class Instance:
@@ -640,8 +720,7 @@ class Instance:
             clauses.append(vs)
 
         def comment(s):
-            # log_debug(s)
-            clauses.append(s)
+            pass
 
         def ALO(data):
             lower = 1 if data[0] == NAN else 0
@@ -1407,10 +1486,8 @@ class Instance:
         log_debug(f'A. Clauses: {next(so_far)}', symbol='DEBUG')
         # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 
-        only_clauses = [clause for clause in clauses if not isinstance(clause, str)]
-
         number_of_variables = next(bomba) - 1
-        number_of_clauses = len(only_clauses)
+        number_of_clauses = len(clauses)
         # TODO: count unique clauses
         del bomba  # invalidated
 
@@ -1419,7 +1496,7 @@ class Instance:
 
         # ===================
         length_counter = {}
-        for n in map(len, only_clauses):
+        for n in map(len, clauses):
             if n in length_counter:
                 length_counter[n] += 1
             else:
@@ -1431,7 +1508,7 @@ class Instance:
         log_debug('Passing base reduction clauses to incremental solver')
         p = subprocess.Popen(['./incremental-lingeling'], universal_newlines=True,
                              stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-        self.write_clauses(p.stdin, only_clausesm, desc='base reduction')
+        self.write_clauses(p.stdin, clauses, desc='base reduction')
 
         reduction = Reduction(C=C,
                               K=K,
@@ -1474,13 +1551,9 @@ class Instance:
         def clause(*vs):
             clauses.append(vs)
 
-        def comment(s):
-            clauses.append(s)
-
         C, K, P = reduction.C, reduction.K, reduction.P
         bomba = count(reduction.number_of_base_variables + 1)
 
-        comment('Preparing objective function')
         _E = [-reduction.nodetype[c, k, p, 4]
               for c in closed_range(1, C)
               for k in closed_range(1, K)
@@ -1535,12 +1608,10 @@ class Instance:
 
         # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 
-        only_clauses = [clause for clause in clauses if not isinstance(clause, str)]
-
         number_of_variables = len(_S) + len(_L)
-        number_of_clauses = len(only_clauses)
+        number_of_clauses = len(clauses)
         # TODO: count unique clauses
-        # number_of_unique_constraints = len(set(only_constraints))
+        # number_of_unique_clauses = len(set(clauses))
 
         # ============
         _base = reduction.number_of_base_variables
@@ -1559,11 +1630,11 @@ class Instance:
         #     log_warn('Some constraints are duplicated')
 
         log_debug('Passing objective function clauses to incremental solver')
-        self.write_clauses(reduction.solver_process.stdin, only_clauses, 'objective function')
+        self.write_clauses(reduction.solver_process.stdin, clauses, 'objective function')
 
         # ===================
         length_counter = {}
-        for n in map(len, only_clauses):
+        for n in map(len, clauses):
             if n in length_counter:
                 length_counter[n] += 1
             else:
@@ -1662,7 +1733,7 @@ class Instance:
         unique_input_events = sorted(self.tree.input_events)
         unique_output_events = sorted(self.tree.output_events)
 
-        self.efsm = EFSM()
+        self.efsm = EFSM(self)
 
         for c in closed_range(1, C):
             self.efsm.add_state(c,
