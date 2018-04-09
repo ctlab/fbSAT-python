@@ -558,11 +558,12 @@ class EFSM:
             etree.SubElement(s, 'ECAction', Algorithm=f'{state.output_event}_{state.algorithm_0}_{state.algorithm_1}')
 
         etree.SubElement(ECC, 'ECTransition', Source='START', Destination=f's_1', Condition='INIT')
-        for transition in self.transitions:
-            etree.SubElement(ECC, 'ECTransition',
-                             Source=f's_{transition.source.id}',
-                             Destination=f's_{transition.destination.id}',
-                             Condition=f'{transition.input_event}&{transition.guard.__str_nice__()}')
+        for state in self.states.values():
+            for transition in state.transitions:
+                etree.SubElement(ECC, 'ECTransition',
+                                 Source=f's_{transition.source.id}',
+                                 Destination=f's_{transition.destination.id}',
+                                 Condition=f'{transition.input_event}&{transition.guard.__str_nice__()}')
 
         # BasicFB::Algorithms declaration
         algorithms = set()
@@ -570,7 +571,7 @@ class EFSM:
             algorithms.add((state.output_event, state.algorithm_0, state.algorithm_1))
         for output_event, algorithm_0, algorithm_1 in algorithms:
             a = etree.SubElement(BasicFB, 'Algorithm', Name=f'{output_event}_{algorithm_0}_{algorithm_1}')
-            etree.SubElement(a, 'ST', Text=algorithm2st(algorithm_0, algorithm_1))
+            etree.SubElement(a, 'ST', Text=f'{output_event} := FALSE;\n{algorithm2st(algorithm_0, algorithm_1)}\n')
 
         return etree.tostring(FBType, encoding='UTF-8', xml_declaration=True, pretty_print=True).decode()
 
@@ -1630,7 +1631,7 @@ class Instance:
         #     log_warn('Some constraints are duplicated')
 
         log_debug('Passing objective function clauses to incremental solver')
-        self.write_clauses(reduction.solver_process.stdin, clauses, 'objective function')
+        self.write_clauses(reduction.solver_process.stdin, clauses, desc='objective function')
 
         # ===================
         length_counter = {}
@@ -1682,7 +1683,7 @@ class Instance:
         #     log_warn('Some clauses are duplicated')
 
         log_debug('Passing cardinality clauses to incremental solver')
-        self.write_clauses(reduction.solver_process.stdin, clauses, 'cardinality')
+        self.write_clauses(reduction.solver_process.stdin, clauses, desc='cardinality')
 
         reduction = reduction._replace(
             N=N,
@@ -1808,6 +1809,10 @@ class Instance:
         log_debug(cmd)
         os.system(cmd)
 
+        filename_fbt = f'out/efsm_{os.path.splitext(os.path.basename(self.filename_traces))[0]}_{self.efsm.number_of_nodes}nodes.fbt'
+        os.makedirs(os.path.dirname(filename_fbt), exist_ok=True)
+        self.efsm.write_fbt(filename_fbt)
+
         log_success(f'Done dumping solution in {time.time() - time_start_dump:.2f} s')
         log_br()
 
@@ -1879,6 +1884,17 @@ def read_names(filename):
         names = f.read().strip().split('\n')
     log_success(f'Done reading names: {", ".join(names)}')
     return names
+
+
+def algorithm2st(algorithm_0, algorithm_1):
+    lines = []
+    for name, a0, a1 in zip(GlobalState['output_variable_names'], algorithm_0, algorithm_1):
+        lines.append(f'IF {name} THEN')
+        lines.append(f'    {name} := { {"0":"FALSE", "1":"TRUE"}[a1] };')
+        lines.append(f'ELSE')
+        lines.append(f'    {name} := { {"0":"FALSE", "1":"TRUE"}[a0] };')
+        lines.append(f'ENDIF;')
+    return '\n'.join(lines)
 
 
 @click.command(context_settings=dict(
