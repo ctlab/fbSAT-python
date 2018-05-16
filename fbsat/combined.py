@@ -34,8 +34,6 @@ class Instance:
                                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE)
             self.stream = self.solver_process.stdin  # to write uniformly
 
-        self.number_of_clauses = 0
-        self.bomba = itertools.count(1)
         self.N_defined = None
 
     def run(self):
@@ -104,6 +102,8 @@ class Instance:
         log_debug(f'Generating base reduction for C={C}, K={K}, P={P}...')
         time_start_base = time.time()
 
+        self.number_of_clauses = 0
+        self.bomba = itertools.count(1)
         if not self.is_minimize:
             self.stream = tempfile.NamedTemporaryFile('w', delete=False)
 
@@ -118,7 +118,7 @@ class Instance:
         X = tree.X
         Z = tree.Z
         U = tree.U
-        Y = tree.Y
+        # Y = tree.Y
 
         # =-=-=-=-=-=
         #  VARIABLES

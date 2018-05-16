@@ -27,8 +27,6 @@ class Instance:
         self.C = None
         self.K = None
         self.best = None
-        self.number_of_clauses = 0
-        self.bomba = itertools.count(1)
 
     def run(self):
         for C in closed_range(1, 10):
@@ -104,6 +102,8 @@ class Instance:
         log_debug(f'Generating base reduction for C = {C}...')
         time_start_base = time.time()
 
+        self.number_of_clauses = 0
+        self.bomba = itertools.count(1)
         self.stream = tempfile.NamedTemporaryFile('w', delete=False)
 
         # =-=-=-=-=-=
@@ -114,10 +114,10 @@ class Instance:
         V = tree.V
         E = tree.E
         O = tree.O
-        X = tree.X
+        # X = tree.X
         Z = tree.Z
         U = tree.U
-        Y = tree.Y
+        # Y = tree.Y
 
         # =-=-=-=-=-=
         #  VARIABLES
