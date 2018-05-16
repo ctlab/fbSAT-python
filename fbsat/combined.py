@@ -90,7 +90,7 @@ class Instance:
                                        for _ in closed_range(1, dims[1])]
                              for _ in closed_range(1, dims[0])]
         else:
-            raise ValueError(f'unsupported number of dimensions ({n+1})')
+            raise ValueError(f'unsupported number of dimensions ({n})')
 
     def add_clause(self, *vs):
         self.number_of_clauses += 1
@@ -249,7 +249,6 @@ class Instance:
             for k in closed_range(1, K):
                 self.add_clause(-transition[c][k][c])
 
-        # FIXME: new
         # 2.3. Forbid transitions to start state
         for c in closed_range(2, C):
             for k in closed_range(1, K):
@@ -454,18 +453,7 @@ class Instance:
                     self.add_clause(nodetype[c][k][p][4],
                                     *[parent[c][k][p][par] for par in range(1, p)])
 
-        # 7.3. parent of v`s child is *v*
-        # === dropped ===
-        # for c in closed_range(1, C):
-        #     for k in closed_range(1, K):
-        #         for p in range(1, P):
-        #             for ch in closed_range(p + 1, P):
-        #                 self.add_clause(-child_left[c, k, p, ch], parent[c, k, ch, p])
-        #             for ch in closed_range(p + 2, P):
-        #                 self.add_clause(-child_right[c, k, p, ch], parent[c, k, ch, p])
-
-        # FIXME: new
-        # 7.4. parent<->child relation
+        # 7.3. parent<->child relation
         for c in closed_range(1, C):
             for k in closed_range(1, K):
                 for p in closed_range(1, P - 1):
@@ -567,7 +555,6 @@ class Instance:
                                             child_right[c][k][p][ch + 1])
 
         # 10.3. AND/OR: children`s parents
-        # 10.3. === see Extra (7.3) ===
         for c in closed_range(1, C):
             for k in closed_range(1, K):
                 for p in closed_range(1, P - 2):
@@ -654,7 +641,6 @@ class Instance:
                     self.add_clause(-nodetype[c][k][p][3], child_right[c][k][p][0])
 
         # 11.3. NOT: child`s parents
-        # 11.3. === see Extra (7.3) ===
         for c in closed_range(1, C):
             for k in closed_range(1, K):
                 for p in closed_range(1, P - 1):
@@ -997,7 +983,8 @@ class Instance:
         return assignment
 
     def maybe_n(self):
-        return f'_N{self.N}' if self.N else ''
+        # return f'_N{self.N}' if self.N else ''
+        return f'_N{self.N_defined}' if self.N_defined else ''
 
     def get_filename_prefix(self):
         return f'{self.filename_prefix}_C{self.C}_K{self.K}_P{self.P}'

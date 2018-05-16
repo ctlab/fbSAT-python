@@ -194,6 +194,7 @@ class ScenarioTree(treelib.Tree):
         self.output_number = make_array(self.V)
         self.unique_input = make_array2(self.U, self.X)
         self.unique_output = make_array2(self.Y, self.Z)
+        self.output_value = make_array2(self.V, self.Z)
 
         # self.tree_parent[1] = 0
         # self.tree_previous_active[1] = 0
@@ -225,6 +226,10 @@ class ScenarioTree(treelib.Tree):
         for y in closed_range(1, self.Y):
             for z, c in enumerate(self.unique_outputs[y - 1], start=1):
                 self.unique_output[y][z] = {'0': False, '1': True}[c]
+
+        for v in closed_range(1, self.V):
+            for z, c in enumerate(self[v].data.output_values, start=1):
+                self.output_value[v][z] = {'0': False, '1': True}[c]
 
     @staticmethod
     def from_files(filename_scenarios, filename_predicate_names, filename_output_variable_names, preprocess=True):

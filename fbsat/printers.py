@@ -32,4 +32,4 @@ def log_error(text, symbol='!', *, fg='red', bg=None, bold=True, nl=True):
 
 
 def log_br(*, fg='white', bg=None, bold=False, nl=True):
-    log(' '.join('=' * 30), symbol=None, fg=fg, bg=None, bold=bold, nl=nl)
+    log(' '.join('=' * 40), symbol=None, fg=fg, bg=None, bold=bold, nl=nl)
