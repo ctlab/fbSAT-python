@@ -19,7 +19,7 @@ class Instance:
     Reduction = namedtuple('Reduction', VARIABLES + ' totalizer')
     Assignment = namedtuple('Assignment', VARIABLES + ' number_of_nodes')
 
-    def __init__(self, scenario_tree, C, K, P, N=0, *, is_minimize=False, sat_solver, filename_prefix=''):
+    def __init__(self, *, scenario_tree, C, K, P, N=0, is_minimize=False, sat_solver, filename_prefix=''):
         self.scenario_tree = scenario_tree
         self.C = C
         self.K = K
@@ -48,6 +48,8 @@ class Instance:
                 self.generate_totalizer()
                 # self.generate_comparator(...)
                 # TODO
+
+                log_warn('Next steps are under development')
         else:
             if self.N != 0:
                 self.generate_totalizer()
@@ -686,6 +688,7 @@ class Instance:
         # 12. BFS constraints
         # 12.1. F_t
         for i in closed_range(1, C):
+            # FIXME: j should iterate from 1 to C, excluding i
             for j in closed_range(i + 1, C):
                 # t_ij <=> OR_k(transition_ikj)
                 aux = bfs_transition[i][j]

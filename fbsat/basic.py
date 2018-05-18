@@ -16,20 +16,21 @@ VARIABLES = 'color transition output_event algorithm_0 algorithm_1'
 
 class Instance:
 
-    Reduction = namedtuple('Reduction', VARIABLES + ' tr nut')
-    Assignment = namedtuple('Assignment', VARIABLES + ' C K')
+    Reduction = namedtuple('Reduction', VARIABLES + ' nut')
+    Assignment = namedtuple('Assignment', VARIABLES)
 
-    def __init__(self, scenario_tree, sat_solver, filename_prefix=''):
+    def __init__(self, *, scenario_tree, C_start=1, sat_solver, filename_prefix=''):
         self.scenario_tree = scenario_tree
         self.sat_solver = sat_solver
         self.filename_prefix = filename_prefix
 
-        self.C = None
-        self.K = None
+        self.C_start = C_start
         self.best = None
+        self.K_best = None
 
     def run(self):
-        for C in closed_range(1, 10):
+        for C in closed_range(self.C_start, 10):
+            log_info(f'Trying C = {C}')
             self.C = C
             self.generate_base()
             self.number_of_base_clauses = self.number_of_clauses
@@ -39,26 +40,28 @@ class Instance:
             log_br()
 
             if assignment is not None:
-                log_br()
                 self.best = assignment
-                self.generate_exists()
+                self.generate_pre()
+                self.number_of_pre_clauses = self.number_of_clauses - self.number_of_base_clauses
 
-                for K in reversed(closed_range(0, C - 1)):
-                    self.K = K
-                    self.number_of_clauses = self.number_of_base_clauses
-                    self.generate_cardinality()
+                # Note: K=C-1 is always SAT and the answer has already been inferred (self.best)
+                for K in reversed(closed_range(0, C - 2)):
+                    log_info(f'Trying C = {C}, K = {K}')
+                    self.number_of_clauses = self.number_of_pre_clauses + self.number_of_base_clauses
+                    self.generate_cardinality(K)
 
-                    assignment = self.solve()
+                    assignment = self.solve(K)
                     log_br()
 
                     if assignment is None:
                         break
 
                     self.best = assignment
+                    self.K_best = K
                 else:
                     log_warn('Reached K = 0, weird...')
 
-                log_success(f'BEST: C={self.best.C}, K={self.best.K}')
+                log_success(f'BEST: C={self.C}, K={self.K_best}')
                 log_br()
                 break
         else:
@@ -102,8 +105,8 @@ class Instance:
         log_debug(f'Generating base reduction for C = {C}...')
         time_start_base = time.time()
 
-        self.number_of_clauses = 0
         self.bomba = itertools.count(1)
+        self.number_of_clauses = 0
         self.stream = tempfile.NamedTemporaryFile('w', delete=False)
 
         # =-=-=-=-=-=
@@ -265,17 +268,16 @@ class Instance:
             output_event=output_event,
             algorithm_0=algorithm_0,
             algorithm_1=algorithm_1,
-            tr=None,
             nut=None
         )
 
         log_debug(f'Done generating base reduction in {time.time() - time_start_base:.2f} s')
 
-    def generate_exists(self):
+    def generate_pre(self):
         C = self.C
 
-        log_debug(f'Generating transitions existance constraints for C = {C}...')
-        time_start_exists = time.time()
+        log_debug(f'Generating transitions existance and pre-cardinality constraints for C = {C}...')
+        time_start_pre = time.time()
 
         self.stream = tempfile.NamedTemporaryFile('w', delete=False)
 
@@ -293,7 +295,7 @@ class Instance:
 
         transition = self.reduction.transition
         tr = self.declare_array(C, C)
-        nut = self.declare_array(C, C, C + 1)
+        nut = self.declare_array(C, C, C, with_zero=True)
 
         # =-=-=-=-=-=-=
         #  CONSTRAINTS
@@ -304,14 +306,27 @@ class Instance:
             for c2 in closed_range(1, C):
                 if c1 == c2:
                     continue
-                _cons = [-tr[c1][c2]]
+                rhs = []
                 # FIXME: my favorite moment is "for (int e = 0; e < 1; e++)", seriously, up to 1???
                 for e in closed_range(1, E):
                     for u in closed_range(1, U):
-                        t = transition[c1][e][u][c2]
-                        self.add_clause(-t, tr[c1][c2])
-                        _cons.append(t)
-                self.add_clause(*_cons)
+                        xi = transition[c1][e][u][c2]
+                        self.add_clause(-xi, tr[c1][c2])
+                        rhs.append(xi)
+                self.add_clause(*rhs, -tr[c1][c2])
+
+        # Transitions cardinality
+        #  "any state has at least zero transitions"
+        for c in closed_range(1, C):
+            self.add_clause(nut[c][1][0])
+
+        #  *silence*
+        for c1 in closed_range(1, C):
+            for c2 in closed_range(2, C):
+                for c3 in closed_range(0, C - 1):
+                    self.add_clause(-nut[c1][c2 - 1][c3], -tr[c1][c2], nut[c1][c2][c3 + 1])
+                for c3 in closed_range(0, C):
+                    self.add_clause(-nut[c1][c2 - 1][c3], tr[c1][c2], nut[c1][c2][c3])
 
         log_debug(f'Clauses: {self.number_of_clauses - self.number_of_base_clauses}', symbol='DEBUG')
         # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
@@ -321,17 +336,16 @@ class Instance:
         # =-=-=-=-=
 
         self.stream.close()
-        shutil.move(self.stream.name, self.get_filename_exists())
+        shutil.move(self.stream.name, self.get_filename_pre())
 
-        self.reduction = self.reduction._replace(tr=tr, nut=nut)
+        self.reduction = self.reduction._replace(nut=nut)
 
-        log_debug(f'Done generating transitions exists in {time.time() - time_start_exists:.2f} s')
+        log_debug(f'Done generating pre in {time.time() - time_start_pre:.2f} s')
 
-    def generate_cardinality(self):
+    def generate_cardinality(self, K):
         C = self.C
-        K = self.K
 
-        log_debug(f'Generating transitions cardinality for C = {C} and K = {K}...')
+        log_debug(f'Generating transitions cardinality...')
         time_start_cardinality = time.time()
 
         self.stream = tempfile.NamedTemporaryFile('w', delete=False)
@@ -341,7 +355,6 @@ class Instance:
         #  VARIABLES
         # =-=-=-=-=-=
 
-        tr = self.reduction.tr
         nut = self.reduction.nut
 
         # =-=-=-=-=-=-=
@@ -349,22 +362,10 @@ class Instance:
         # =-=-=-=-=-=-=
 
         # Transitions cardinality: leq K
-        #  "any state has at least zero transitions"
-        for c in closed_range(1, C):
-            self.add_clause(nut[c][1][1])
-
-        #  *silence*
-        for c1 in closed_range(1, C):
-            for c2 in closed_range(2, C):
-                for c3 in closed_range(1, C):
-                    self.add_clause(-nut[c1][c2 - 1][c3], -tr[c1][c2], nut[c1][c2][c3 + 1])
-                for c3 in closed_range(1, C + 1):
-                    self.add_clause(-nut[c1][c2 - 1][c3], tr[c1][c2], nut[c1][c2][c3])
-
         #  "forbid all states to have K+1 or more transitions"
-        for c1 in closed_range(1, C):
-            for c3 in closed_range(K + 1, C + 1):
-                self.add_clause(-nut[c1][C][c3])
+        for c in closed_range(1, C):
+            for k in closed_range(K + 1, C):
+                self.add_clause(-nut[c][C][k])
 
         log_debug(f'Clauses: {self.number_of_clauses - _number_of_clauses}', symbol='DEBUG')
         # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
@@ -374,24 +375,20 @@ class Instance:
         # =-=-=-=-=
 
         self.stream.close()
-        shutil.move(self.stream.name, self.get_filename_cardinality())
+        shutil.move(self.stream.name, self.get_filename_cardinality(K))
 
         log_debug(f'Done generating transitions cardinality in {time.time() - time_start_cardinality:.2f} s')
 
-    def solve(self):
-        if self.K is not None:
-            log_info(f'Solving for C = {self.C} and K = {self.K}...')
-        else:
-            log_info(f'Solving for C = {self.C}...')
+    def solve(self, K=None):
+        log_info(f'Solving...')
         time_start_solve = time.time()
 
-        self.write_header()
-        self.write_merged()
+        self.write_header(K=K)
+        self.write_merged(K=K)
 
-        cmd = f'{self.sat_solver} {self.get_filename_merged()}'
+        cmd = f'{self.sat_solver} {self.get_filename_merged(K)}'
         log_debug(cmd)
-        p = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE,
-                           universal_newlines=True)
+        p = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, universal_newlines=True)
 
         if p.returncode == 10:
             log_success(f'SAT in {time.time() - time_start_solve:.2f} s')
@@ -411,7 +408,7 @@ class Instance:
             log_error(f'returncode {p.returncode} in {time.time() - time_start_solve:.2f} s')
 
     def parse_raw_assignment(self, raw_assignment):
-        log_info('Building assignment...')
+        log_debug('Building assignment...')
         time_start_assignment = time.time()
 
         def wrapper_int(data):
@@ -443,44 +440,42 @@ class Instance:
             output_event=wrapper_int(self.reduction.output_event),
             algorithm_0=wrapper_algo(self.reduction.algorithm_0),
             algorithm_1=wrapper_algo(self.reduction.algorithm_1),
-            C=self.C,
-            K=self.K
         )
 
-        log_success(f'Done building assignment in {time.time() - time_start_assignment:.2f} s')
+        log_debug(f'Done building assignment in {time.time() - time_start_assignment:.2f} s')
         return assignment
 
-    def maybe_k(self):
-        return f'_K{self.K}' if self.K is not None else ''
+    def maybe_k(self, K):
+        return f'_K{K}' if K is not None else ''
 
     def get_filename_base(self):
         return f'{self.filename_prefix}_C{self.C}_base.dimacs'
 
-    def get_filename_exists(self):
-        return f'{self.filename_prefix}_C{self.C}_exists.dimacs'
+    def get_filename_pre(self):
+        return f'{self.filename_prefix}_C{self.C}_pre.dimacs'
 
-    def get_filename_cardinality(self):
-        return f'{self.filename_prefix}_C{self.C}_K{self.K}_cardinality.dimacs'
+    def get_filename_cardinality(self, K):
+        return f'{self.filename_prefix}_C{self.C}_K{K}_cardinality.dimacs'
 
-    def get_filename_header(self):
-        return f'{self.filename_prefix}_C{self.C}{self.maybe_k()}_header.dimacs'
+    def get_filename_header(self, K=None):
+        return f'{self.filename_prefix}_C{self.C}{self.maybe_k(K)}_header.dimacs'
 
-    def get_filename_merged(self):
-        return f'{self.filename_prefix}_C{self.C}{self.maybe_k()}_merged.dimacs'
+    def get_filename_merged(self, K=None):
+        return f'{self.filename_prefix}_C{self.C}{self.maybe_k(K)}_merged.dimacs'
 
-    def get_filenames(self):
-        if self.K is not None:
-            return ' '.join((self.get_filename_header(),
+    def get_filenames(self, K=None):
+        if K is not None:
+            return ' '.join((self.get_filename_header(K),
                              self.get_filename_base(),
-                             self.get_filename_exists(),
-                             self.get_filename_cardinality()))
+                             self.get_filename_pre(),
+                             self.get_filename_cardinality(K)))
         else:
             return ' '.join((self.get_filename_header(),
                              self.get_filename_base()))
 
-    def write_header(self, filename=None):
+    def write_header(self, *, filename=None, K=None):
         if filename is None:
-            filename = self.get_filename_header()
+            filename = self.get_filename_header(K)
 
         # if self.is_reuse and os.path.exists(filename):
         #     log_debug(f'Reusing header from <{filename}>')
@@ -490,15 +485,15 @@ class Instance:
         with open(filename, 'w') as f:
             f.write(f'p cnf {self.number_of_variables} {self.number_of_clauses}\n')
 
-    def write_merged(self, filename=None):
+    def write_merged(self, *, filename=None, K=None):
         if filename is None:
-            filename = self.get_filename_merged()
+            filename = self.get_filename_merged(K)
 
         # if self.is_reuse and os.path.exists(filename):
         #     log_debug(f'Reusing merged reduction from <{filename}>')
         #     return
 
         log_debug(f'Writing merged reduction to <{filename}>...')
-        cmd_cat = f'cat {self.get_filenames()} > {filename}'
+        cmd_cat = f'cat {self.get_filenames(K)} > {filename}'
         log_debug(cmd_cat, symbol='$')
         subprocess.run(cmd_cat, shell=True)

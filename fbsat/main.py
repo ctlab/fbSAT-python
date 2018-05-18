@@ -70,15 +70,19 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
 
     if strategy == 'basic':
         log_info('Basic strategy')
-        InstanceBasic(scenario_tree=scenario_tree,
+        config = dict(scenario_tree=scenario_tree,
                       filename_prefix=filename_prefix,
-                      sat_solver=sat_solver).run()
+                      sat_solver=sat_solver)
+        if C is not None:
+            config['C_start'] = C
+        InstanceBasic(**config).run()
     elif strategy == 'combined':
         log_info('Combined strategy')
-        InstanceCombined(scenario_tree=scenario_tree,
-                         C=C, K=K, P=P, N=N,
-                         filename_prefix=filename_prefix,
-                         is_minimize=is_minimize,
-                         sat_solver=sat_solver).run()
+        config = dict(scenario_tree=scenario_tree,
+                      C=C, K=K, P=P, N=N,
+                      filename_prefix=filename_prefix,
+                      is_minimize=is_minimize,
+                      sat_solver=sat_solver)
+        InstanceCombined(**config).run()
 
     log_success(f'All done in {time.time() - time_start:.2f} s')
