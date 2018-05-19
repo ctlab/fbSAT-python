@@ -6,6 +6,7 @@ import shutil
 import tempfile
 import itertools
 import subprocess
+from io import StringIO
 from collections import namedtuple
 
 from .utils import *
@@ -19,41 +20,72 @@ class Instance:
     Reduction = namedtuple('Reduction', VARIABLES + ' nut')
     Assignment = namedtuple('Assignment', VARIABLES)
 
-    def __init__(self, *, scenario_tree, C_start=1, sat_solver, filename_prefix=''):
-        self.scenario_tree = scenario_tree
-        self.sat_solver = sat_solver
-        self.filename_prefix = filename_prefix
+    def __init__(self, *, scenario_tree, C_start=1, C_end=10, is_incremental=False, sat_solver=None, sat_isolver=None, filename_prefix='', write_strategy='StringIO'):
+        assert write_strategy in ('direct', 'tempfile', 'StringIO')
 
-        self.C_start = C_start
+        if is_incremental:
+            assert sat_isolver is not None, "You need to specify incremental sat-solver using `--sat-isolver` option"
+        else:
+            assert sat_solver is not None, "You need to specify sat-solver using `--sat-solver` option"
+
+        self.scenario_tree = scenario_tree
+        self.is_incremental = is_incremental
+        self.sat_solver = sat_solver
+        self.sat_isolver = sat_isolver
+        self.filename_prefix = filename_prefix
+        self.write_strategy = write_strategy
+
+        self.number_of_variables = 0
+        self.number_of_clauses = 0
+
+        if is_incremental:
+            self.solver_process = subprocess.Popen(self.sat_isolver, shell=True, universal_newlines=True,
+                                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+            self.stream = self.solver_process.stdin  # to write uniformly
+
+        if C_end:
+            self.C_iter = closed_range(C_start, C_end)
+        else:
+            self.C_iter = itertools.count(C_start)
+            self.C_iter = itertools.islice(self.C_iter, 20)  # FIXME: stub
         self.best = None
         self.K_best = None
 
     def run(self):
-        for C in closed_range(self.C_start, 10):
+        for C in self.C_iter:
             log_info(f'Trying C = {C}')
             self.C = C
+            self.K = None
             self.generate_base()
-            self.number_of_base_clauses = self.number_of_clauses
-            self.number_of_base_variables = self.number_of_variables
+            number_of_base_variables = self.number_of_variables
+            number_of_base_clauses = self.number_of_clauses
+            log_debug(f'Base variables: {number_of_base_variables}')
+            log_debug(f'Base clauses: {number_of_base_clauses}')
 
             assignment = self.solve()
             log_br()
 
-            if assignment is not None:
+            if assignment:  # SAT
                 self.best = assignment
                 self.generate_pre()
-                self.number_of_pre_clauses = self.number_of_clauses - self.number_of_base_clauses
+                number_of_pre_variables = self.number_of_variables - number_of_base_variables
+                number_of_pre_clauses = self.number_of_clauses - number_of_base_clauses
+                log_debug(f'Pre variables: {number_of_pre_variables}')
+                log_debug(f'Pre clauses: {number_of_pre_clauses}')
 
-                # Note: K=C-1 is always SAT and the answer has already been inferred (self.best)
+                # Note: K=C-1 == unconstrained base reduction
                 for K in reversed(closed_range(0, C - 2)):
                     log_info(f'Trying C = {C}, K = {K}')
-                    self.number_of_clauses = self.number_of_pre_clauses + self.number_of_base_clauses
-                    self.generate_cardinality(K)
+                    self.K = K
+                    # Revert possible previous variables and constraints
+                    self.number_of_variables = number_of_base_variables + number_of_pre_variables
+                    self.number_of_clauses = number_of_pre_clauses + number_of_base_clauses
+                    self.generate_cardinality()
 
-                    assignment = self.solve(K)
+                    assignment = self.solve()
                     log_br()
 
-                    if assignment is None:
+                    if assignment is None:  # UNSAT -> answer is last SAT (self.best)
                         break
 
                     self.best = assignment
@@ -67,16 +99,42 @@ class Instance:
         else:
             log_error('CAN`T FIND ANYTHING :C')
 
-    @property
-    def number_of_variables(self):
-        return int(str(self.bomba)[6:-1]) - 1
+    def maybe_new_stream(self, filename):
+        if not self.is_incremental:
+            if self.write_strategy == 'direct':
+                self.stream = open(filename, 'w')
+            elif self.write_strategy == 'tempfile':
+                self.stream = tempfile.NamedTemporaryFile('w', delete=False)
+            elif self.write_strategy == 'StringIO':
+                self.stream = StringIO()
+
+    def maybe_close_stream(self, filename):
+        if not self.is_incremental:
+            if self.write_strategy == 'direct':
+                self.stream.close()
+            elif self.write_strategy == 'tempfile':
+                self.stream.close()
+                shutil.move(self.stream.name, filename)
+            elif self.write_strategy == 'StringIO':
+                with open(filename, 'w') as f:
+                    self.stream.seek(0)
+                    shutil.copyfileobj(self.stream, f)
+                self.stream.close()
+
+    def new_variable(self):
+        self.number_of_variables += 1
+        return self.number_of_variables
+
+    def add_clause(self, *vs):
+        self.number_of_clauses += 1
+        self.stream.write(' '.join(map(str, vs)) + ' 0\n')
 
     def declare_array(self, *dims, with_zero=False):
         def last():
             if with_zero:
-                return [next(self.bomba) for _ in closed_range(0, dims[-1])]
+                return [self.new_variable() for _ in closed_range(0, dims[-1])]
             else:
-                return [None] + [next(self.bomba) for _ in closed_range(1, dims[-1])]
+                return [None] + [self.new_variable() for _ in closed_range(1, dims[-1])]
         n = len(dims)
         if n == 1:
             return last()
@@ -95,19 +153,13 @@ class Instance:
         else:
             raise ValueError(f'unsupported number of dimensions ({n})')
 
-    def add_clause(self, *vs):
-        self.number_of_clauses += 1
-        self.stream.write(' '.join(map(str, vs)) + ' 0\n')
-
     def generate_base(self):
         C = self.C
 
         log_debug(f'Generating base reduction for C = {C}...')
         time_start_base = time.time()
 
-        self.bomba = itertools.count(1)
-        self.number_of_clauses = 0
-        self.stream = tempfile.NamedTemporaryFile('w', delete=False)
+        self.maybe_new_stream(self.get_filename_base())
 
         # =-=-=-=-=-=
         #  CONSTANTS
@@ -169,8 +221,7 @@ class Instance:
         # 1.1. Root corresponds to start state
         self.add_clause(color[1][1])
 
-        log_debug(f'1. Clauses: {so_far()}', symbol='DEBUG')
-        # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+        log_debug(f'1. Clauses: {so_far()}', symbol='STAT')
 
         # 2. Transition constraints
         # 2.0. AMO(transition)
@@ -186,24 +237,21 @@ class Instance:
             u = tree.input_number[v]
             for c1 in closed_range(1, C):
                 for c2 in closed_range(1, C):
+                    # color_p,c1 & color_v,c2 => transition_c1,e,u,c2
                     self.add_clause(-color[p][c1], -color[v][c2], transition[c1][e][u][c2])
 
         # 2.2. Transition coverage
-        # for c in closed_range(1, C):
-        #     for v in closed_range(1, V):
-        #         p = tree.parent[v]
-        #         e = tree.input_event[v]
-        #         u = tree.input_number[v]
-        #         self.add_clause()
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for u in closed_range(1, U):
-                    self.add_clause(transition[c][e][u][c],
-                                    *[color[tree.parent[v]][c] for v in closed_range(1, V)
-                                      if tree.input_event[v] == e and tree.input_number[v] == u])
+                    # not transition_c,e,u,c => OR_{v in V | tie[v]==e and tin[v]=u} color_parent[v],c
+                    rhs = []
+                    for v in closed_range(1, V):
+                        if tree.input_event[v] == e and tree.input_number[v] == u:
+                            rhs.append(color[tree.parent[v]][c])
+                    self.add_clause(transition[c][e][u][c], *rhs)
 
-        log_debug(f'2. Clauses: {so_far()}', symbol='DEBUG')
-        # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+        log_debug(f'2. Clauses: {so_far()}', symbol='STAT')
 
         # 3. Algorithm constraints
         # 3.1. Start state does nothing
@@ -227,8 +275,7 @@ class Instance:
                     elif (old, new) == (True, True):
                         self.add_clause(-color[v][c], algorithm_1[c][z])
 
-        log_debug(f'3. Clauses: {so_far()}', symbol='DEBUG')
-        # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+        log_debug(f'3. Clauses: {so_far()}', symbol='STAT')
 
         # 4. Output event constraints
         # 4.0a. ALO(output_event)
@@ -247,20 +294,17 @@ class Instance:
                 for c in closed_range(1, C):
                     self.add_clause(-color[v][c], output_event[c][tree.output_event[v]])
 
-        log_debug(f'4. Clauses: {so_far()}', symbol='DEBUG')
-        # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+        log_debug(f'4. Clauses: {so_far()}', symbol='STAT')
 
         # TODO: 5. BFS constraints
 
-        # log_debug(f'5. Clauses: {so_far()}', symbol='DEBUG')
-        # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+        # log_debug(f'5. Clauses: {so_far()}', symbol='STAT')
 
         # =-=-=-=-=
         #   FINISH
         # =-=-=-=-=
 
-        self.stream.close()
-        shutil.move(self.stream.name, self.get_filename_base())
+        self.maybe_close_stream(self.get_filename_base())
 
         self.reduction = self.Reduction(
             color=color,
@@ -279,7 +323,7 @@ class Instance:
         log_debug(f'Generating transitions existance and pre-cardinality constraints for C = {C}...')
         time_start_pre = time.time()
 
-        self.stream = tempfile.NamedTemporaryFile('w', delete=False)
+        self.maybe_new_stream(self.get_filename_pre())
 
         # =-=-=-=-=-=
         #  CONSTANTS
@@ -328,28 +372,24 @@ class Instance:
                 for c3 in closed_range(0, C):
                     self.add_clause(-nut[c1][c2 - 1][c3], tr[c1][c2], nut[c1][c2][c3])
 
-        log_debug(f'Clauses: {self.number_of_clauses - self.number_of_base_clauses}', symbol='DEBUG')
-        # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-
         # =-=-=-=-=
         #   FINISH
         # =-=-=-=-=
 
-        self.stream.close()
-        shutil.move(self.stream.name, self.get_filename_pre())
+        self.maybe_close_stream(self.get_filename_pre())
 
         self.reduction = self.reduction._replace(nut=nut)
 
         log_debug(f'Done generating pre in {time.time() - time_start_pre:.2f} s')
 
-    def generate_cardinality(self, K):
+    def generate_cardinality(self):
         C = self.C
+        K = self.K
 
         log_debug(f'Generating transitions cardinality...')
         time_start_cardinality = time.time()
 
-        self.stream = tempfile.NamedTemporaryFile('w', delete=False)
-        _number_of_clauses = self.number_of_clauses
+        self.maybe_new_stream(self.get_filename_cardinality())
 
         # =-=-=-=-=-=
         #  VARIABLES
@@ -367,45 +407,61 @@ class Instance:
             for k in closed_range(K + 1, C):
                 self.add_clause(-nut[c][C][k])
 
-        log_debug(f'Clauses: {self.number_of_clauses - _number_of_clauses}', symbol='DEBUG')
-        # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-
         # =-=-=-=-=
         #   FINISH
         # =-=-=-=-=
 
-        self.stream.close()
-        shutil.move(self.stream.name, self.get_filename_cardinality(K))
+        self.maybe_close_stream(self.get_filename_cardinality())
 
         log_debug(f'Done generating transitions cardinality in {time.time() - time_start_cardinality:.2f} s')
 
-    def solve(self, K=None):
+    def solve(self):
         log_info(f'Solving...')
         time_start_solve = time.time()
 
-        self.write_header(K=K)
-        self.write_merged(K=K)
+        if self.is_incremental:
+            p = self.solver_process
+            p.stdin.write('solve 0\n')  # TODO: pass timeout?
+            p.stdin.flush()
 
-        cmd = f'{self.sat_solver} {self.get_filename_merged(K)}'
-        log_debug(cmd)
-        p = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, universal_newlines=True)
+            answer = p.stdout.readline().rstrip()
 
-        if p.returncode == 10:
-            log_success(f'SAT in {time.time() - time_start_solve:.2f} s')
-
-            raw_assignment = [None]  # 1-based
-            for line in p.stdout.split('\n'):
-                if line.startswith('v'):
-                    for value in map(int, regex.findall(r'-?\d+', line)):
-                        if value == 0:
-                            break
-                        assert abs(value) == len(raw_assignment)
-                        raw_assignment.append(value)
-            return self.parse_raw_assignment(raw_assignment)
-        elif p.returncode == 20:
-            log_error(f'UNSAT in {time.time() - time_start_solve:.2f} s')
+            if answer == 'SAT':
+                log_success(f'SAT in {time.time() - time_start_solve:.2f} s')
+                line_assignment = p.stdout.readline().rstrip()
+                if line_assignment.startswith('v '):
+                    raw_assignment = [None] + list(map(int, line_assignment[2:].split()))  # 1-based
+                    return self.parse_raw_assignment(raw_assignment)
+                else:
+                    log_error('Error reading line with assignment')
+            elif answer == 'UNSAT':
+                log_error(f'UNSAT in {time.time() - time_start_solve:.2f} s')
+            elif answer == 'UNKNOWN':
+                log_error(f'UNKNOWN in {time.time() - time_start_solve:.2f} s')
         else:
-            log_error(f'returncode {p.returncode} in {time.time() - time_start_solve:.2f} s')
+            self.write_header()
+            self.write_merged()
+
+            cmd = f'{self.sat_solver} {self.get_filename_merged()}'
+            log_debug(cmd)
+            p = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, universal_newlines=True)
+
+            if p.returncode == 10:
+                log_success(f'SAT in {time.time() - time_start_solve:.2f} s')
+
+                raw_assignment = [None]  # 1-based
+                for line in p.stdout.split('\n'):
+                    if line.startswith('v'):
+                        for value in map(int, regex.findall(r'-?\d+', line)):
+                            if value == 0:
+                                break
+                            assert abs(value) == len(raw_assignment)
+                            raw_assignment.append(value)
+                return self.parse_raw_assignment(raw_assignment)
+            elif p.returncode == 20:
+                log_error(f'UNSAT in {time.time() - time_start_solve:.2f} s')
+            else:
+                log_error(f'returncode {p.returncode} in {time.time() - time_start_solve:.2f} s')
 
     def parse_raw_assignment(self, raw_assignment):
         log_debug('Building assignment...')
@@ -445,8 +501,8 @@ class Instance:
         log_debug(f'Done building assignment in {time.time() - time_start_assignment:.2f} s')
         return assignment
 
-    def maybe_k(self, K):
-        return f'_K{K}' if K is not None else ''
+    def maybe_k(self):
+        return f'_K{self.K}' if self.K is not None else ''
 
     def get_filename_base(self):
         return f'{self.filename_prefix}_C{self.C}_base.dimacs'
@@ -454,46 +510,40 @@ class Instance:
     def get_filename_pre(self):
         return f'{self.filename_prefix}_C{self.C}_pre.dimacs'
 
-    def get_filename_cardinality(self, K):
-        return f'{self.filename_prefix}_C{self.C}_K{K}_cardinality.dimacs'
+    def get_filename_cardinality(self):
+        return f'{self.filename_prefix}_C{self.C}_K{self.K}_cardinality.dimacs'
 
-    def get_filename_header(self, K=None):
-        return f'{self.filename_prefix}_C{self.C}{self.maybe_k(K)}_header.dimacs'
+    def get_filename_header(self):
+        return f'{self.filename_prefix}_C{self.C}{self.maybe_k()}_header.dimacs'
 
-    def get_filename_merged(self, K=None):
-        return f'{self.filename_prefix}_C{self.C}{self.maybe_k(K)}_merged.dimacs'
+    def get_filename_merged(self):
+        return f'{self.filename_prefix}_C{self.C}{self.maybe_k()}_merged.dimacs'
 
-    def get_filenames(self, K=None):
-        if K is not None:
-            return ' '.join((self.get_filename_header(K),
+    def get_filenames(self):
+        if self.K is not None:
+            return ' '.join((self.get_filename_header(),
                              self.get_filename_base(),
                              self.get_filename_pre(),
-                             self.get_filename_cardinality(K)))
+                             self.get_filename_cardinality()))
         else:
             return ' '.join((self.get_filename_header(),
                              self.get_filename_base()))
 
-    def write_header(self, *, filename=None, K=None):
-        if filename is None:
-            filename = self.get_filename_header(K)
-
+    def write_header(self):
+        filename = self.get_filename_header()
         # if self.is_reuse and os.path.exists(filename):
         #     log_debug(f'Reusing header from <{filename}>')
         #     return
-
         log_debug(f'Writing header to <{filename}>...')
         with open(filename, 'w') as f:
             f.write(f'p cnf {self.number_of_variables} {self.number_of_clauses}\n')
 
-    def write_merged(self, *, filename=None, K=None):
-        if filename is None:
-            filename = self.get_filename_merged(K)
-
+    def write_merged(self):
+        filename = self.get_filename_merged()
         # if self.is_reuse and os.path.exists(filename):
         #     log_debug(f'Reusing merged reduction from <{filename}>')
         #     return
-
         log_debug(f'Writing merged reduction to <{filename}>...')
-        cmd_cat = f'cat {self.get_filenames(K)} > {filename}'
+        cmd_cat = f'cat {self.get_filenames()} > {filename}'
         log_debug(cmd_cat, symbol='$')
         subprocess.run(cmd_cat, shell=True)

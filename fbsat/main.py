@@ -41,15 +41,25 @@ CONTEXT_SETTINGS = dict(
               help='Maximum number of nodes in guard\'s boolean formula\'s parse tree')
 @click.option('-N', 'N', type=int, metavar='<int>', default=0,
               help='Initial upper bound on total number of nodes in all guard-trees')
+@click.option('-Cmax', 'Cmax', type=int, metavar='<int>',
+              help='[Basic] C_end')
 @click.option('--min', 'is_minimize', is_flag=True,
               help='Do minimize')
-@click.option('--sat-solver', metavar='<sat-solver-cmd>',
+@click.option('--incremental', 'is_incremental', is_flag=True,
+              help='Use incremental solver')
+@click.option('--sat-solver', metavar='<cmd>',
               default='glucose -model -verb=0', show_default=True,
               # default='cryptominisat5 --verb=0', show_default=True,
               # default='cadical -q', show_default=True,
-              help='SAT-solver')
+              help='SAT solver')
+@click.option('--sat-isolver', metavar='<cmd>',
+              default='incremental-lingeling', show_default=True,
+              help='Incremental SAT solver')
+@click.option('--write-strategy', type=click.Choice(['direct', 'tempfile', 'StringIO']),
+              default='StringIO', show_default=True,
+              help='Which file-write strategy to use')
 @click.version_option(__version__)
-def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_variable_names, filename_prefix, C, K, P, N, is_minimize, sat_solver):
+def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_variable_names, filename_prefix, C, K, P, N, Cmax, is_minimize, is_incremental, sat_solver, sat_isolver, write_strategy):
     if strategy == 'combined':
         if C is None:
             raise click.BadParameter('missing value', param_hint='C')
@@ -71,18 +81,26 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
     if strategy == 'basic':
         log_info('Basic strategy')
         config = dict(scenario_tree=scenario_tree,
+                      is_incremental=is_incremental,
+                      sat_solver=sat_solver,
+                      sat_isolver=sat_isolver,
                       filename_prefix=filename_prefix,
-                      sat_solver=sat_solver)
+                      write_strategy=write_strategy)
         if C is not None:
             config['C_start'] = C
+        if Cmax is not None:
+            config['C_end'] = Cmax
         InstanceBasic(**config).run()
     elif strategy == 'combined':
         log_info('Combined strategy')
         config = dict(scenario_tree=scenario_tree,
                       C=C, K=K, P=P, N=N,
-                      filename_prefix=filename_prefix,
                       is_minimize=is_minimize,
-                      sat_solver=sat_solver)
+                      is_incremental=is_incremental,
+                      sat_solver=sat_solver,
+                      sat_isolver=sat_isolver,
+                      filename_prefix=filename_prefix,
+                      write_strategy=write_strategy)
         InstanceCombined(**config).run()
 
     log_success(f'All done in {time.time() - time_start:.2f} s')

@@ -4,8 +4,8 @@ import time
 import regex
 import shutil
 import tempfile
-import itertools
 import subprocess
+from io import StringIO
 from collections import deque, namedtuple
 
 from .utils import *
@@ -19,18 +19,35 @@ class Instance:
     Reduction = namedtuple('Reduction', VARIABLES + ' totalizer')
     Assignment = namedtuple('Assignment', VARIABLES + ' number_of_nodes')
 
-    def __init__(self, *, scenario_tree, C, K, P, N=0, is_minimize=False, sat_solver, filename_prefix=''):
+    def __init__(self, *, scenario_tree, C, K, P, N=0, is_minimize=False, is_incremental=False, sat_solver=None, sat_isolver=None, filename_prefix='', write_strategy='StringIO'):
+        assert write_strategy in ('direct', 'tempfile', 'StringIO')
+
+        if is_minimize:
+            assert sat_isolver is not None, "Minimization is yet supported only with incremental SAT solver"
+            is_incremental = True
+
+        if is_incremental:
+            assert sat_isolver is not None, "You need to specify incremental SAT solver using `--sat-isolver` option"
+        else:
+            assert sat_solver is not None, "You need to specify sat-solver using `--sat-solver` option"
+
         self.scenario_tree = scenario_tree
         self.C = C
         self.K = K
         self.P = P
         self.N = N
         self.is_minimize = is_minimize
+        self.is_incremental = is_incremental
         self.sat_solver = sat_solver
+        self.sat_isolver = sat_isolver
         self.filename_prefix = filename_prefix
+        self.write_strategy = write_strategy
 
-        if is_minimize:
-            self.solver_process = subprocess.Popen(sat_solver, shell=True, universal_newlines=True,
+        self.number_of_variables = 0
+        self.number_of_clauses = 0
+
+        if is_incremental:
+            self.solver_process = subprocess.Popen(self.sat_isolver, shell=True, universal_newlines=True,
                                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE)
             self.stream = self.solver_process.stdin  # to write uniformly
 
@@ -38,10 +55,18 @@ class Instance:
 
     def run(self):
         self.generate_base_reduction()
+        number_of_base_variables = self.number_of_variables
+        number_of_base_clauses = self.number_of_clauses
+        log_debug(f'Base variables: {number_of_base_variables}')
+        log_debug(f'Base clauses: {number_of_base_clauses}')
 
         if self.is_minimize:
+            log_warn('Minimization is under development...')
+            return
+
             # Initial solution with unconstrained guards size to estimate latter
             assignment = self.solve()
+
             if assignment:
                 print(f'number_of_nodes = {assignment.number_of_nodes}')
 
@@ -53,27 +78,63 @@ class Instance:
         else:
             if self.N != 0:
                 self.generate_totalizer()
-                self.generate_comparator(self.N)
+                number_of_totalizer_variables = self.number_of_variables - number_of_base_variables
+                number_of_totalizer_clauses = self.number_of_clauses - number_of_base_clauses
+                log_debug(f'Totalizer variables: {number_of_totalizer_variables}')
+                log_debug(f'Totalizer clauses: {number_of_totalizer_clauses}')
+
+                self.generate_comparator()
+                number_of_comparator_variables = self.number_of_variables - number_of_base_variables - number_of_totalizer_variables
+                number_of_comparator_clauses = self.number_of_clauses - number_of_base_clauses - number_of_totalizer_clauses
+                log_debug(f'Comparator variables: {number_of_comparator_variables}')
+                log_debug(f'Comparator clauses: {number_of_comparator_clauses}')
 
             assignment = self.solve()
+
             if assignment:
                 print(f'color = {assignment.color}')
                 print(f'number_of_nodes = {assignment.number_of_nodes}')
 
         # in the end
-        if self.is_minimize:
+        if self.is_incremental:
             self.solver_process.kill()
 
-    @property
-    def number_of_variables(self):
-        return int(str(self.bomba)[6:-1]) - 1
+    def maybe_new_stream(self, filename):
+        if not self.is_incremental:
+            if self.write_strategy == 'direct':
+                self.stream = open(filename, 'w')
+            elif self.write_strategy == 'tempfile':
+                self.stream = tempfile.NamedTemporaryFile('w', delete=False)
+            elif self.write_strategy == 'StringIO':
+                self.stream = StringIO()
+
+    def maybe_close_stream(self, filename):
+        if not self.is_incremental:
+            if self.write_strategy == 'direct':
+                self.stream.close()
+            elif self.write_strategy == 'tempfile':
+                self.stream.close()
+                shutil.move(self.stream.name, filename)
+            elif self.write_strategy == 'StringIO':
+                with open(filename, 'w') as f:
+                    self.stream.seek(0)
+                    shutil.copyfileobj(self.stream, f)
+                self.stream.close()
+
+    def new_variable(self):
+        self.number_of_variables += 1
+        return self.number_of_variables
+
+    def add_clause(self, *vs):
+        self.number_of_clauses += 1
+        self.stream.write(' '.join(map(str, vs)) + ' 0\n')
 
     def declare_array(self, *dims, with_zero=False):
         def last():
             if with_zero:
-                return [next(self.bomba) for _ in closed_range(0, dims[-1])]
+                return [self.new_variable() for _ in closed_range(0, dims[-1])]
             else:
-                return [None] + [next(self.bomba) for _ in closed_range(1, dims[-1])]
+                return [None] + [self.new_variable() for _ in closed_range(1, dims[-1])]
         n = len(dims)
         if n == 1:
             return last()
@@ -92,10 +153,6 @@ class Instance:
         else:
             raise ValueError(f'unsupported number of dimensions ({n})')
 
-    def add_clause(self, *vs):
-        self.number_of_clauses += 1
-        self.stream.write(' '.join(map(str, vs)) + ' 0\n')
-
     def generate_base_reduction(self):
         C = self.C
         K = self.K
@@ -104,10 +161,7 @@ class Instance:
         log_debug(f'Generating base reduction for C={C}, K={K}, P={P}...')
         time_start_base = time.time()
 
-        self.number_of_clauses = 0
-        self.bomba = itertools.count(1)
-        if not self.is_minimize:
-            self.stream = tempfile.NamedTemporaryFile('w', delete=False)
+        self.maybe_new_stream(self.get_filename_base())
 
         # =-=-=-=-=-=
         #  CONSTANTS
@@ -196,8 +250,7 @@ class Instance:
             else:
                 self.add_clause(-color[v][0])
 
-        log_debug(f'1. Clauses: {so_far()}', symbol='DEBUG')
-        # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+        log_debug(f'1. Clauses: {so_far()}', symbol='STAT')
 
         # 2. Transition constraints
         # 2.0a ALO(transition)
@@ -238,7 +291,7 @@ class Instance:
                             x1 = transition[ctpa][k][cv]
                             x2 = trans_event[ctpa][k][tree.input_event[v]]
                             x3 = fired_only[ctpa][k][tree.input_number[v]]
-                            aux = next(self.bomba)
+                            aux = self.new_variable()
                             self.add_clause(-x1, -x2, -x3, aux)
                             self.add_clause(-aux, x1)
                             self.add_clause(-aux, x2)
@@ -256,8 +309,7 @@ class Instance:
             for k in closed_range(1, K):
                 self.add_clause(-transition[c][k][1])
 
-        log_debug(f'2. Clauses: {so_far()}', symbol='DEBUG')
-        # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+        log_debug(f'2. Clauses: {so_far()}', symbol='STAT')
 
         # 3. Output event constraints
         # 3.0a ALO(output_event)
@@ -277,8 +329,7 @@ class Instance:
                 for cv in closed_range(1, C):
                     self.add_clause(-color[v][cv], output_event[cv][tree.output_event[v]])
 
-        log_debug(f'3. Clauses: {so_far()}', symbol='DEBUG')
-        # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+        log_debug(f'3. Clauses: {so_far()}', symbol='STAT')
 
         # 4. Algorithm constraints
         # 4.1. Start state does nothing
@@ -320,8 +371,7 @@ class Instance:
                             else:
                                 self.add_clause(-color[v][cv], -algorithm_1[cv][z])
 
-        log_debug(f'4. Clauses: {so_far()}', symbol='DEBUG')
-        # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+        log_debug(f'4. Clauses: {so_far()}', symbol='STAT')
 
         # 5. Firing constraints
         # 5.1. (not_fired definition)
@@ -380,8 +430,7 @@ class Instance:
                     self.add_clause(-x1, x3)
                     self.add_clause(x1, -x2, -x3)
 
-        log_debug(f'5. Clauses: {so_far()}', symbol='DEBUG')
-        # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+        log_debug(f'5. Clauses: {so_far()}', symbol='STAT')
 
         # 6. Guard conditions constraints
         # 6.1a ALO(nodetype)
@@ -439,8 +488,7 @@ class Instance:
                 for p in closed_range(1, P):
                     AMO(parent[c][k][p])
 
-        log_debug(f'6. Clauses: {so_far()}', symbol='DEBUG')
-        # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+        log_debug(f'6. Clauses: {so_far()}', symbol='STAT')
 
         # 7. Extra guard conditions constraints
         # 7.1. Root has no parent
@@ -461,8 +509,7 @@ class Instance:
                 for p in closed_range(1, P - 1):
                     for ch in closed_range(p + 1, P):
                         self.add_clause(-parent[c][k][ch][p], child_left[c][k][p][ch], child_right[c][k][p][ch])
-        log_debug(f'7. Clauses: {so_far()}', symbol='DEBUG')
-        # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+        log_debug(f'7. Clauses: {so_far()}', symbol='STAT')
 
         # 8. None-type nodes constraints
         # 8.1. None-type nodes have largest numbers
@@ -493,8 +540,7 @@ class Instance:
                         self.add_clause(-nodetype[c][k][p][4], -child_value_left[c][k][p][u])
                         self.add_clause(-nodetype[c][k][p][4], -child_value_right[c][k][p][u])
 
-        log_debug(f'8. Clauses: {so_far()}', symbol='DEBUG')
-        # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+        log_debug(f'8. Clauses: {so_far()}', symbol='STAT')
 
         # 9. Terminals constraints
         # 9.1. Only terminals have associated terminal variables
@@ -524,8 +570,7 @@ class Instance:
                             else:
                                 self.add_clause(-x1, -x2)
 
-        log_debug(f'9. Clauses: {so_far()}', symbol='DEBUG')
-        # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+        log_debug(f'9. Clauses: {so_far()}', symbol='STAT')
 
         # 10. AND/OR nodes constraints
         # 10.0. AND/OR nodes cannot have numbers P-1 or P
@@ -620,7 +665,7 @@ class Instance:
                         self.add_clause(-x1, x2, -x3)
                         self.add_clause(-x1, x2, -x4)
 
-        log_debug(f'10. Clauses: {so_far()}', symbol='DEBUG')
+        log_debug(f'10. Clauses: {so_far()}', symbol='STAT')
         # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 
         # 11. NOT nodes constraints
@@ -682,8 +727,7 @@ class Instance:
                         self.add_clause(-x1, -x2, -x3)
                         self.add_clause(-x1, x2, x3)
 
-        log_debug(f'11. Clauses: {so_far()}', symbol='DEBUG')
-        # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+        log_debug(f'11. Clauses: {so_far()}', symbol='STAT')
 
         # 12. BFS constraints
         # 12.1. F_t
@@ -724,8 +768,7 @@ class Instance:
                     # p_ji => ~p_j+1,k
                     self.add_clause(-bfs_parent[j][i], -bfs_parent[j + 1][k])
 
-        log_debug(f'12. Clauses: {so_far()}', symbol='DEBUG')
-        # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+        log_debug(f'12. Clauses: {so_far()}', symbol='STAT')
 
         # Declare any ad-hoc you like
         # AD-HOCs
@@ -759,16 +802,13 @@ class Instance:
                 for u in closed_range(1, U):
                     self.add_clause(-fired_only[c][k][u], -nodetype[c][k][1][4])
 
-        log_debug(f'A. Clauses: {so_far()}', symbol='DEBUG')
-        # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+        log_debug(f'A. Clauses: {so_far()}', symbol='STAT')
 
         # =-=-=-=-=
         #   FINISH
         # =-=-=-=-=
 
-        if not self.is_minimize:
-            self.stream.close()
-            shutil.move(self.stream.name, self.get_filename_base())
+        self.maybe_close_stream(self.get_filename_base())
 
         self.reduction = self.Reduction(
             color=color,
@@ -791,14 +831,12 @@ class Instance:
         )
 
         log_debug(f'Done generating base reduction in {time.time() - time_start_base:.2f} s')
-        log_br()
 
     def generate_totalizer(self):
         log_debug(f'Generating totalizer...')
         time_start_totalizer = time.time()
 
-        if not self.is_minimize:
-            self.stream = open(self.get_filename_totalizer(), 'w')
+        self.maybe_new_stream(self.get_filename_totalizer())
 
         _E = [-self.reduction.nodetype[c][k][p][4]
               for c in closed_range(1, self.C)
@@ -815,7 +853,7 @@ class Instance:
             m2 = len(b)
             m = m1 + m2
 
-            r = [next(self.bomba) for _ in range(m)]  # 0-based
+            r = [self.new_variable() for _ in range(m)]  # 0-based
 
             if len(q) != 0:
                 _L.extend(r)
@@ -852,33 +890,30 @@ class Instance:
         _S = q.pop()  # set of output variables
         assert len(_E) == len(_S)
 
-        if not self.is_minimize:
-            self.stream.close()
+        self.maybe_close_stream(self.get_filename_totalizer())
 
         self.reduction = self.reduction._replace(totalizer=_S)  # Note: totalizer is 0-based!
 
         log_debug(f'Done generating totalizer in {time.time() - time_start_totalizer:.2f} s')
-        log_br()
 
-    def generate_comparator(self, N_new):
+    def generate_comparator(self):
         log_debug(f'Generating comparator...')
         time_start_cardinality = time.time()
 
-        if not self.is_minimize:
-            self.stream = open(self.get_filename_comparator(), 'w')
+        self.maybe_new_stream(self.get_filename_comparator())
 
-        if self.N_defined is None:
-            N_max = self.C * self.K * self.P
-        else:
+        if self.N_defined is not None:
             N_max = self.N_defined
+        else:
+            N_max = self.C * self.K * self.P
 
         # sum(E) <= N_new   <=>   sum(E) < N_new + 1
-        log_debug(f'BOOM from {N_new+1} to {N_max} !!!')
-        for i in closed_range(N_new + 1, N_max):
+        for i in reversed(closed_range(self.N + 1, N_max)):
             self.add_clause(-self.reduction.totalizer[i - 1])
 
-        if not self.is_minimize:
-            self.stream.close()
+        self.N_defined = self.N
+
+        self.maybe_close_stream(self.get_filename_comparator())
 
         log_debug(f'Done generating comparator in {time.time() - time_start_cardinality:.2f} s')
 
@@ -886,7 +921,7 @@ class Instance:
         log_info('Solving...')
         time_start_solve = time.time()
 
-        if self.is_minimize:
+        if self.is_incremental:
             p = self.solver_process
             p.stdin.write('solve 0\n')  # TODO: pass timeout?
             p.stdin.flush()
@@ -932,7 +967,7 @@ class Instance:
                 log_error(f'returncode {p.returncode} in {time.time() - time_start_solve:.2f} s')
 
     def parse_raw_assignment(self, raw_assignment):
-        log_info('Building assignment...')
+        log_debug('Building assignment...')
         time_start_assignment = time.time()
 
         def wrapper_int(data):
@@ -982,12 +1017,11 @@ class Instance:
                                 for p in closed_range(1, self.P))
         )
 
-        log_success(f'Done building assignment in {time.time() - time_start_assignment:.2f} s')
+        log_debug(f'Done building assignment in {time.time() - time_start_assignment:.2f} s')
         return assignment
 
     def maybe_n(self):
-        # return f'_N{self.N}' if self.N else ''
-        return f'_N{self.N_defined}' if self.N_defined else ''
+        return f'_N{self.N}' if self.N else ''
 
     def get_filename_prefix(self):
         return f'{self.filename_prefix}_C{self.C}_K{self.K}_P{self.P}'
@@ -1008,7 +1042,7 @@ class Instance:
         return f'{self.get_filename_prefix()}{self.maybe_n()}_merged.dimacs'
 
     def get_filenames(self):
-        if self.N != 0:
+        if self.N:
             return ' '.join((self.get_filename_header(),
                              self.get_filename_base(),
                              self.get_filename_totalizer(),
@@ -1017,26 +1051,20 @@ class Instance:
             return ' '.join((self.get_filename_header(),
                              self.get_filename_base()))
 
-    def write_header(self, filename=None):
-        if filename is None:
-            filename = self.get_filename_header()
-
+    def write_header(self):
+        filename = self.get_filename_header()
         # if self.is_reuse and os.path.exists(filename):
         #     log_debug(f'Reusing header from <{filename}>')
         #     return
-
         log_debug(f'Writing header to <{filename}>...')
         with open(filename, 'w') as f:
             f.write(f'p cnf {self.number_of_variables} {self.number_of_clauses}\n')
 
-    def write_merged(self, filename=None):
-        if filename is None:
-            filename = self.get_filename_merged()
-
+    def write_merged(self):
+        filename = self.get_filename_merged()
         # if self.is_reuse and os.path.exists(filename):
         #     log_debug(f'Reusing merged reduction from <{filename}>')
         #     return
-
         log_debug(f'Writing merged reduction to <{filename}>...')
         cmd_cat = f'cat {self.get_filenames()} > {filename}'
         log_debug(cmd_cat, symbol='$')
