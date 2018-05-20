@@ -1,5 +1,6 @@
 __all__ = ('Instance', )
 
+import os
 import time
 import regex
 import shutil
@@ -20,7 +21,7 @@ class Instance:
     Reduction = namedtuple('Reduction', VARIABLES + ' nut')
     Assignment = namedtuple('Assignment', VARIABLES)
 
-    def __init__(self, *, scenario_tree, C_start=1, C_end=10, is_incremental=False, sat_solver=None, sat_isolver=None, filename_prefix='', write_strategy='StringIO'):
+    def __init__(self, *, scenario_tree, C_start=1, C_end=10, is_incremental=False, sat_solver=None, sat_isolver=None, filename_prefix='', write_strategy='StringIO', is_reuse=False):
         assert write_strategy in ('direct', 'tempfile', 'StringIO')
 
         if is_incremental:
@@ -34,6 +35,7 @@ class Instance:
         self.sat_isolver = sat_isolver
         self.filename_prefix = filename_prefix
         self.write_strategy = write_strategy
+        self.is_reuse = is_reuse
 
         self.number_of_variables = 0
         self.number_of_clauses = 0
@@ -101,6 +103,11 @@ class Instance:
 
     def maybe_new_stream(self, filename):
         if not self.is_incremental:
+            if self.is_reuse and os.path.exists(filename):
+                log_debug(f'Reusing <{filename}>')
+                self.stream = None
+                return
+
             if self.write_strategy == 'direct':
                 self.stream = open(filename, 'w')
             elif self.write_strategy == 'tempfile':
@@ -109,7 +116,7 @@ class Instance:
                 self.stream = StringIO()
 
     def maybe_close_stream(self, filename):
-        if not self.is_incremental:
+        if not self.is_incremental and self.stream is not None:
             if self.write_strategy == 'direct':
                 self.stream.close()
             elif self.write_strategy == 'tempfile':
@@ -127,7 +134,8 @@ class Instance:
 
     def add_clause(self, *vs):
         self.number_of_clauses += 1
-        self.stream.write(' '.join(map(str, vs)) + ' 0\n')
+        if self.stream is not None:
+            self.stream.write(' '.join(map(str, vs)) + ' 0\n')
 
     def declare_array(self, *dims, with_zero=False):
         def last():
@@ -531,18 +539,18 @@ class Instance:
 
     def write_header(self):
         filename = self.get_filename_header()
-        # if self.is_reuse and os.path.exists(filename):
-        #     log_debug(f'Reusing header from <{filename}>')
-        #     return
+        if self.is_reuse and os.path.exists(filename):
+            log_debug(f'Reusing header from <{filename}>')
+            return
         log_debug(f'Writing header to <{filename}>...')
         with open(filename, 'w') as f:
             f.write(f'p cnf {self.number_of_variables} {self.number_of_clauses}\n')
 
     def write_merged(self):
         filename = self.get_filename_merged()
-        # if self.is_reuse and os.path.exists(filename):
-        #     log_debug(f'Reusing merged reduction from <{filename}>')
-        #     return
+        if self.is_reuse and os.path.exists(filename):
+            log_debug(f'Reusing merged reduction from <{filename}>')
+            return
         log_debug(f'Writing merged reduction to <{filename}>...')
         cmd_cat = f'cat {self.get_filenames()} > {filename}'
         log_debug(cmd_cat, symbol='$')

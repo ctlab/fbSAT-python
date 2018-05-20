@@ -1,3 +1,4 @@
+import os
 import time
 
 import click
@@ -31,7 +32,7 @@ CONTEXT_SETTINGS = dict(
               help='File with output variables names')
 @click.option('--prefix', 'filename_prefix', metavar='<path>',
               type=click.Path(writable=True),
-              default='cnf', show_default=True,
+              default='cnf/cnf', show_default=True,
               help='Generated CNF filename prefix')
 @click.option('-C', 'C', type=int, metavar='<int>',
               help='Number of colors (automata states)')
@@ -47,6 +48,8 @@ CONTEXT_SETTINGS = dict(
               help='Do minimize')
 @click.option('--incremental', 'is_incremental', is_flag=True,
               help='Use incremental solver')
+@click.option('--reuse', 'is_reuse', is_flag=True,
+              help='Reuse generated base reduction and objective function')
 @click.option('--sat-solver', metavar='<cmd>',
               default='glucose -model -verb=0', show_default=True,
               # default='cryptominisat5 --verb=0', show_default=True,
@@ -59,7 +62,7 @@ CONTEXT_SETTINGS = dict(
               default='StringIO', show_default=True,
               help='Which file-write strategy to use')
 @click.version_option(__version__)
-def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_variable_names, filename_prefix, C, K, P, N, Cmax, is_minimize, is_incremental, sat_solver, sat_isolver, write_strategy):
+def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_variable_names, filename_prefix, C, K, P, N, Cmax, is_minimize, is_incremental, is_reuse, sat_solver, sat_isolver, write_strategy):
     if strategy == 'combined':
         if C is None:
             raise click.BadParameter('missing value', param_hint='C')
@@ -74,9 +77,11 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
 
     log_info('Building scenario tree...')
     scenario_tree = ScenarioTree.from_files(filename_scenarios, filename_predicate_names, filename_output_variable_names)
-    scenario_tree.pprint(n=30)
+    # scenario_tree.pprint(n=30)
     log_success(f'Successfully built scenario tree of size {scenario_tree.size()}')
     log_br()
+
+    filename_prefix += '_' + os.path.splitext(os.path.basename(filename_scenarios))[0]
 
     if strategy == 'basic':
         log_info('Basic strategy')
@@ -85,7 +90,8 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
                       sat_solver=sat_solver,
                       sat_isolver=sat_isolver,
                       filename_prefix=filename_prefix,
-                      write_strategy=write_strategy)
+                      write_strategy=write_strategy,
+                      is_reuse=is_reuse)
         if C is not None:
             config['C_start'] = C
         if Cmax is not None:
@@ -100,7 +106,8 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
                       sat_solver=sat_solver,
                       sat_isolver=sat_isolver,
                       filename_prefix=filename_prefix,
-                      write_strategy=write_strategy)
+                      write_strategy=write_strategy,
+                      is_reuse=is_reuse)
         InstanceCombined(**config).run()
 
     log_success(f'All done in {time.time() - time_start:.2f} s')
