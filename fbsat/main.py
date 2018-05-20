@@ -100,7 +100,7 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
     elif strategy == 'combined':
         log_info('Combined strategy')
         config = dict(scenario_tree=scenario_tree,
-                      C=C, K=K, P=P, N=N,
+                      C=C, K=K, P=P, N_start=N,
                       is_minimize=is_minimize,
                       is_incremental=is_incremental,
                       sat_solver=sat_solver,
