@@ -41,9 +41,6 @@ class Instance:
         self.write_strategy = write_strategy
         self.is_reuse = is_reuse
 
-        self.number_of_variables = 0
-        self.number_of_clauses = 0
-
         self.best = None
         self.N = None
         self.N_defined = None
@@ -54,6 +51,8 @@ class Instance:
                                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE)
             self.stream = self.solver_process.stdin  # to write uniformly
 
+        self.number_of_variables = 0
+        self.number_of_clauses = 0
         self.generate_base_reduction()
         number_of_base_variables = self.number_of_variables
         number_of_base_clauses = self.number_of_clauses

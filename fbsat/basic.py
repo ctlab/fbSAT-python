@@ -37,9 +37,6 @@ class Instance:
         self.write_strategy = write_strategy
         self.is_reuse = is_reuse
 
-        self.number_of_variables = 0
-        self.number_of_clauses = 0
-
         if C_end:
             self.C_iter = closed_range(C_start, C_end)
         else:
@@ -58,6 +55,8 @@ class Instance:
                 self.stream = self.solver_process.stdin  # to write uniformly
             self.C = C
             self.K = None
+            self.number_of_variables = 0
+            self.number_of_clauses = 0
             self.generate_base()
             number_of_base_variables = self.number_of_variables
             number_of_base_clauses = self.number_of_clauses
