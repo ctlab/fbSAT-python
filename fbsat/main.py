@@ -81,6 +81,10 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
     log_success(f'Successfully built scenario tree of size {scenario_tree.size()}')
     log_br()
 
+    if not os.path.exists(os.path.dirname(filename_prefix)):
+        log_warn('Ensuring folder for CNFs exists')
+        os.makedirs(os.path.dirname(filename_prefix), exist_ok=True)
+
     filename_prefix += '_' + os.path.splitext(os.path.basename(filename_scenarios))[0]
 
     if strategy == 'basic':
