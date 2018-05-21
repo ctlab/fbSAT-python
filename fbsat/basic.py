@@ -40,11 +40,6 @@ class Instance:
         self.number_of_variables = 0
         self.number_of_clauses = 0
 
-        if is_incremental:
-            self.solver_process = subprocess.Popen(self.sat_isolver, shell=True, universal_newlines=True,
-                                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-            self.stream = self.solver_process.stdin  # to write uniformly
-
         if C_end:
             self.C_iter = closed_range(C_start, C_end)
         else:
@@ -52,10 +47,15 @@ class Instance:
             self.C_iter = itertools.islice(self.C_iter, 20)  # FIXME: stub
         self.best = None
         self.K_best = None
+        self.K_defined = None
 
     def run(self):
         for C in self.C_iter:
             log_info(f'Trying C = {C}')
+            if self.is_incremental:
+                self.solver_process = subprocess.Popen(self.sat_isolver, shell=True, universal_newlines=True,
+                                                       stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+                self.stream = self.solver_process.stdin  # to write uniformly
             self.C = C
             self.K = None
             self.generate_base()
@@ -95,9 +95,15 @@ class Instance:
                 else:
                     log_warn('Reached K = 0, weird...')
 
+                if self.is_incremental:
+                    self.solver_process.kill()
+
                 log_success(f'BEST: C={self.C}, K={self.K_best}')
                 log_br()
                 break
+            else:
+                if self.is_incremental:
+                    self.solver_process.kill()
         else:
             log_error('CAN`T FIND ANYTHING :C')
 
@@ -399,25 +405,23 @@ class Instance:
 
         self.maybe_new_stream(self.get_filename_cardinality())
 
-        # =-=-=-=-=-=
-        #  VARIABLES
-        # =-=-=-=-=-=
+        if self.is_incremental and self.K_defined is not None:
+            K_max = self.K_defined
+        else:
+            K_max = C
 
-        nut = self.reduction.nut
-
-        # =-=-=-=-=-=-=
-        #  CONSTRAINTS
-        # =-=-=-=-=-=-=
+        log_debug(f'K_defined = {self.K_defined}')
+        log_debug(f'CARDINALITY from K+1 to K_max = {K+1}..{K_max}')
+        log_debug(f'Variables for color C: {[-self.reduction.nut[C][C][k] for k in reversed(closed_range(K + 1, K_max))]}')
 
         # Transitions cardinality: leq K
         #  "forbid all states to have K+1 or more transitions"
         for c in closed_range(1, C):
-            for k in closed_range(K + 1, C):
-                self.add_clause(-nut[c][C][k])
+            for k in reversed(closed_range(K + 1, K_max)):
+                self.add_clause(-self.reduction.nut[c][C][k])
 
-        # =-=-=-=-=
-        #   FINISH
-        # =-=-=-=-=
+        if self.is_incremental:
+            self.K_defined = K
 
         self.maybe_close_stream(self.get_filename_cardinality())
 

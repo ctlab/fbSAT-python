@@ -44,23 +44,37 @@ class Instance:
         self.number_of_variables = 0
         self.number_of_clauses = 0
 
-        if is_incremental:
-            self.solver_process = subprocess.Popen(self.sat_isolver, shell=True, universal_newlines=True,
-                                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-            self.stream = self.solver_process.stdin  # to write uniformly
-
         self.best = None
         self.N = None
         self.N_defined = None
 
     def run(self):
+        if self.is_incremental:
+            self.solver_process = subprocess.Popen(self.sat_isolver, shell=True, universal_newlines=True,
+                                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+            self.stream = self.solver_process.stdin  # to write uniformly
+
         self.generate_base_reduction()
+        number_of_base_variables = self.number_of_variables
+        number_of_base_clauses = self.number_of_clauses
+        log_debug(f'Base variables: {number_of_base_variables}')
+        log_debug(f'Base clauses: {number_of_base_clauses}')
 
         if self.is_minimize:
             if self.N_start != 0:
                 self.N = self.N_start
+
                 self.generate_totalizer()
+                number_of_totalizer_variables = self.number_of_variables - number_of_base_variables
+                number_of_totalizer_clauses = self.number_of_clauses - number_of_base_clauses
+                log_debug(f'Totalizer variables: {number_of_totalizer_variables}')
+                log_debug(f'Totalizer clauses: {number_of_totalizer_clauses}')
+
                 self.generate_comparator()
+                number_of_comparator_variables = self.number_of_variables - number_of_base_variables - number_of_totalizer_variables
+                number_of_comparator_clauses = self.number_of_clauses - number_of_base_clauses - number_of_totalizer_clauses
+                log_debug(f'Comparator variables: {number_of_comparator_variables}')
+                log_debug(f'Comparator clauses: {number_of_comparator_clauses}')
 
             assignment = self.solve()
             if assignment:
@@ -69,13 +83,23 @@ class Instance:
 
             if assignment and self.N_start == 0:
                 self.generate_totalizer()
+                number_of_totalizer_variables = self.number_of_variables - number_of_base_variables
+                number_of_totalizer_clauses = self.number_of_clauses - number_of_base_clauses
+                log_debug(f'Totalizer variables: {number_of_totalizer_variables}')
+                log_debug(f'Totalizer clauses: {number_of_totalizer_clauses}')
 
             while assignment is not None:
                 self.best = assignment
-
                 self.N = assignment.number_of_nodes - 1
                 log_info(f'Trying with N = {self.N}...')
+
+                self.number_of_variables = number_of_base_variables + number_of_totalizer_variables
+                self.number_of_clauses = number_of_base_clauses + number_of_totalizer_clauses
                 self.generate_comparator()
+                number_of_comparator_variables = self.number_of_variables - number_of_base_variables - number_of_totalizer_variables
+                number_of_comparator_clauses = self.number_of_clauses - number_of_base_clauses - number_of_totalizer_clauses
+                log_debug(f'Comparator variables: {number_of_comparator_variables}')
+                log_debug(f'Comparator clauses: {number_of_comparator_clauses}')
 
                 assignment = self.solve()
                 log_br()
@@ -89,8 +113,18 @@ class Instance:
         else:  # not is_minimize
             if self.N_start != 0:
                 self.N = self.N_start
+
                 self.generate_totalizer()
+                number_of_totalizer_variables = self.number_of_variables - number_of_base_variables
+                number_of_totalizer_clauses = self.number_of_clauses - number_of_base_clauses
+                log_debug(f'Totalizer variables: {number_of_totalizer_variables}')
+                log_debug(f'Totalizer clauses: {number_of_totalizer_clauses}')
+
                 self.generate_comparator()
+                number_of_comparator_variables = self.number_of_variables - number_of_base_variables - number_of_totalizer_variables
+                number_of_comparator_clauses = self.number_of_clauses - number_of_base_clauses - number_of_totalizer_clauses
+                log_debug(f'Comparator variables: {number_of_comparator_variables}')
+                log_debug(f'Comparator clauses: {number_of_comparator_clauses}')
 
             assignment = self.solve()
             log_br()
@@ -920,16 +954,17 @@ class Instance:
 
         self.maybe_new_stream(self.get_filename_comparator())
 
-        if self.N_defined is not None:
+        if self.is_incremental and self.N_defined is not None:
             N_max = self.N_defined
         else:
             N_max = self.C * self.K * self.P
 
-        # sum(E) <= N_new   <=>   sum(E) < N_new + 1
+        # sum(E) <= N   <=>   sum(E) < N + 1
         for i in reversed(closed_range(self.N + 1, N_max)):
             self.add_clause(-self.reduction.totalizer[i - 1])  # Note: totalizer is 0-based!
 
-        self.N_defined = self.N
+        if self.is_incremental:
+            self.N_defined = self.N
 
         self.maybe_close_stream(self.get_filename_comparator())
 
