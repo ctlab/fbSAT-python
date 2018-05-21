@@ -354,18 +354,18 @@ class Instance:
         # =-=-=-=-=-=-=
 
         # Transitions existance
-        for c1 in closed_range(1, C):
-            for c2 in closed_range(1, C):
-                if c1 == c2:
+        for i in closed_range(1, C):
+            for j in closed_range(1, C):
+                if i == j:
                     continue
                 rhs = []
                 # FIXME: my favorite moment is "for (int e = 0; e < 1; e++)", seriously, up to 1???
                 for e in closed_range(1, E):
                     for u in closed_range(1, U):
-                        xi = transition[c1][e][u][c2]
-                        self.add_clause(-xi, tr[c1][c2])
-                        rhs.append(xi)
-                self.add_clause(*rhs, -tr[c1][c2])
+                        t = transition[i][e][u][j]
+                        self.add_clause(-t, tr[i][j])
+                        rhs.append(t)
+                self.add_clause(*rhs, -tr[i][j])
 
         # Transitions cardinality
         #  "any state has at least zero transitions"
@@ -373,12 +373,12 @@ class Instance:
             self.add_clause(nut[c][1][0])
 
         #  *silence*
-        for c1 in closed_range(1, C):
-            for c2 in closed_range(2, C):
-                for c3 in closed_range(0, C - 1):
-                    self.add_clause(-nut[c1][c2 - 1][c3], -tr[c1][c2], nut[c1][c2][c3 + 1])
-                for c3 in closed_range(0, C):
-                    self.add_clause(-nut[c1][c2 - 1][c3], tr[c1][c2], nut[c1][c2][c3])
+        for i in closed_range(1, C):
+            for j in closed_range(2, C):
+                for k in closed_range(0, C - 1):
+                    self.add_clause(-nut[i][j - 1][k], -tr[i][j], nut[i][j][k + 1])
+                for k in closed_range(0, C):
+                    self.add_clause(-nut[i][j - 1][k], tr[i][j], nut[i][j][k])
 
         # =-=-=-=-=
         #   FINISH
