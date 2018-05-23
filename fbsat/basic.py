@@ -102,7 +102,7 @@ class Instance:
                         # self.generate_cardinality()
                         self.generate_cardinality_isolver()
 
-                        assignment = self.solve(is_incremental=True)
+                        assignment = self.solve_incremental()
                         log_br()
 
                         if assignment is None:  # UNSAT, the answer is last solution (self.best)
@@ -504,55 +504,56 @@ class Instance:
 
         log_debug(f'Done feeding cardinality ({self.number_of_clauses-_nc} clauses) to isolver in {time.time() - time_start_cardinality:.2f} s')
 
-    def solve(self, is_incremental):
-        # Note: do not lean on self.is_incremental, use local var instead!
-
+    def solve(self):
         log_info(f'Solving...')
         time_start_solve = time.time()
 
-        if is_incremental:
-            p = self.isolver_process
-            p.stdin.write('solve 0\n')  # TODO: pass timeout?
-            p.stdin.flush()
+        self.write_header()
+        self.write_merged()
 
-            answer = p.stdout.readline().rstrip()
+        cmd = f'{self.sat_solver} {self.get_filename_merged()}'
+        log_debug(cmd)
+        p = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, universal_newlines=True)
 
-            if answer == 'SAT':
-                log_success(f'SAT in {time.time() - time_start_solve:.2f} s')
-                line_assignment = p.stdout.readline().rstrip()
-                if line_assignment.startswith('v '):
-                    raw_assignment = [None] + list(map(int, line_assignment[2:].split()))  # 1-based
-                    return self.parse_raw_assignment(raw_assignment)
-                else:
-                    log_error('Error reading line with assignment')
-            elif answer == 'UNSAT':
-                log_error(f'UNSAT in {time.time() - time_start_solve:.2f} s')
-            elif answer == 'UNKNOWN':
-                log_error(f'UNKNOWN in {time.time() - time_start_solve:.2f} s')
+        if p.returncode == 10:
+            log_success(f'SAT in {time.time() - time_start_solve:.2f} s')
+
+            raw_assignment = [None]  # 1-based
+            for line in p.stdout.split('\n'):
+                if line.startswith('v'):
+                    for value in map(int, regex.findall(r'-?\d+', line)):
+                        if value == 0:
+                            break
+                        assert abs(value) == len(raw_assignment)
+                        raw_assignment.append(value)
+            return self.parse_raw_assignment(raw_assignment)
+        elif p.returncode == 20:
+            log_error(f'UNSAT in {time.time() - time_start_solve:.2f} s')
         else:
-            self.write_header()
-            self.write_merged()
+            log_error(f'returncode {p.returncode} in {time.time() - time_start_solve:.2f} s')
 
-            cmd = f'{self.sat_solver} {self.get_filename_merged()}'
-            log_debug(cmd)
-            p = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, universal_newlines=True)
+    def solve_incremental(self):
+        log_info(f'Solving incrementaly...')
+        time_start_solve = time.time()
 
-            if p.returncode == 10:
-                log_success(f'SAT in {time.time() - time_start_solve:.2f} s')
+        p = self.isolver_process
+        p.stdin.write('solve 0\n')  # TODO: pass timeout?
+        p.stdin.flush()
 
-                raw_assignment = [None]  # 1-based
-                for line in p.stdout.split('\n'):
-                    if line.startswith('v'):
-                        for value in map(int, regex.findall(r'-?\d+', line)):
-                            if value == 0:
-                                break
-                            assert abs(value) == len(raw_assignment)
-                            raw_assignment.append(value)
+        answer = p.stdout.readline().rstrip()
+
+        if answer == 'SAT':
+            log_success(f'SAT in {time.time() - time_start_solve:.2f} s')
+            line_assignment = p.stdout.readline().rstrip()
+            if line_assignment.startswith('v '):
+                raw_assignment = [None] + list(map(int, line_assignment[2:].split()))  # 1-based
                 return self.parse_raw_assignment(raw_assignment)
-            elif p.returncode == 20:
-                log_error(f'UNSAT in {time.time() - time_start_solve:.2f} s')
             else:
-                log_error(f'returncode {p.returncode} in {time.time() - time_start_solve:.2f} s')
+                log_error('Error reading line with assignment')
+        elif answer == 'UNSAT':
+            log_error(f'UNSAT in {time.time() - time_start_solve:.2f} s')
+        elif answer == 'UNKNOWN':
+            log_error(f'UNKNOWN in {time.time() - time_start_solve:.2f} s')
 
     def parse_raw_assignment(self, raw_assignment):
         log_debug('Building assignment...')
