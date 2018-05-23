@@ -91,16 +91,14 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
     if strategy == 'basic':
         log_info('Basic strategy')
         config = dict(scenario_tree=scenario_tree,
+                      C=C, K=K, C_end=Cmax,
+                      is_minimize=is_minimize,
                       is_incremental=is_incremental,
                       sat_solver=sat_solver,
                       sat_isolver=sat_isolver,
                       filename_prefix=filename_prefix,
                       write_strategy=write_strategy,
                       is_reuse=is_reuse)
-        if C is not None:
-            config['C_start'] = C
-        if Cmax is not None:
-            config['C_end'] = Cmax
         InstanceBasic(**config).run()
     elif strategy == 'combined':
         log_info('Combined strategy')

@@ -21,7 +21,7 @@ class Instance:
     Reduction = namedtuple('Reduction', VARIABLES + ' nut')
     Assignment = namedtuple('Assignment', VARIABLES)
 
-    def __init__(self, *, scenario_tree, C_start=1, C_end=10, is_incremental=False, sat_solver=None, sat_isolver=None, filename_prefix='', write_strategy='StringIO', is_reuse=False):
+    def __init__(self, *, scenario_tree, C=None, C_end=None, K=None, is_minimize=True, is_incremental=False, sat_solver=None, sat_isolver=None, filename_prefix='', write_strategy='StringIO', is_reuse=False):
         assert write_strategy in ('direct', 'tempfile', 'StringIO')
 
         if is_incremental:
@@ -29,7 +29,14 @@ class Instance:
         else:
             assert sat_solver is not None, "You need to specify sat-solver using `--sat-solver` option"
 
+        if is_minimize and K is not None:
+            log_warn(f'Ignoring K={K} because of minimization')
+
+        if not is_minimize:
+            assert C is not None, "You need to specify C if not minimizing"
+
         self.scenario_tree = scenario_tree
+        self.is_minimize = is_minimize
         self.is_incremental = is_incremental
         self.sat_solver = sat_solver
         self.sat_isolver = sat_isolver
@@ -37,74 +44,104 @@ class Instance:
         self.write_strategy = write_strategy
         self.is_reuse = is_reuse
 
-        if C_end:
+        if C is not None:
+            C_start = C
+        else:
+            C_start = 1
+
+        if C_end is not None:
             self.C_iter = closed_range(C_start, C_end)
         else:
             self.C_iter = itertools.count(C_start)
             self.C_iter = itertools.islice(self.C_iter, 20)  # FIXME: stub
+
+        self.C_given = C
+        self.K_given = K
         self.best = None
         self.K_best = None
         self.K_defined = None
 
     def run(self):
-        for C in self.C_iter:
-            log_info(f'Trying C = {C}')
-            if self.is_incremental:
-                self.solver_process = subprocess.Popen(self.sat_isolver, shell=True, universal_newlines=True,
-                                                       stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-                self.stream = self.solver_process.stdin  # to write uniformly
-            self.C = C
-            self.K = None
+        if self.is_minimize:
+            for C in self.C_iter:
+                log_info(f'Trying C = {C}')
+                if self.is_incremental:
+                    self.solver_process = subprocess.Popen(self.sat_isolver, shell=True, universal_newlines=True,
+                                                           stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+                    self.stream = self.solver_process.stdin  # to write uniformly
+                self.C = C
+                self.K = None
+                self.number_of_variables = 0
+                self.number_of_clauses = 0
+                self.generate_base()
+
+                assignment = self.solve()
+                log_br()
+
+                if assignment:  # SAT
+                    self.best = assignment
+                    self.generate_pre()
+
+                    _nv = self.number_of_variables
+                    _nc = self.number_of_clauses
+
+                    # Note: K=C-1 == unconstrained base reduction
+                    for K in reversed(closed_range(0, C - 2)):
+                        log_info(f'Trying C = {C}, K = {K}')
+                        self.K = K
+                        # Revert possible previous variables and constraints
+                        self.number_of_variables = _nv
+                        self.number_of_clauses = _nc
+                        self.generate_cardinality()
+
+                        assignment = self.solve()
+                        log_br()
+
+                        if assignment is None:  # UNSAT -> answer is last SAT (self.best)
+                            break
+
+                        self.best = assignment
+                        self.K_best = K
+                    else:
+                        log_warn('Reached K = 0, weird...')
+
+                    if self.is_incremental:
+                        self.solver_process.kill()
+
+                    log_success(f'BEST: C={self.C}, K={self.K_best}')
+                    log_br()
+                    break
+                else:
+                    if self.is_incremental:
+                        self.solver_process.kill()
+            else:
+                log_error('CAN`T FIND ANYTHING :C')
+        else:  # not is_minimize
+            self.C = self.C_given
+            self.K = self.K_given
+
             self.number_of_variables = 0
             self.number_of_clauses = 0
             self.generate_base()
-            number_of_base_variables = self.number_of_variables
-            number_of_base_clauses = self.number_of_clauses
-            log_debug(f'Base variables: {number_of_base_variables}')
-            log_debug(f'Base clauses: {number_of_base_clauses}')
+
+            if self.K is not None:
+                self.generate_pre()
+                self.generate_cardinality()
 
             assignment = self.solve()
             log_br()
 
             if assignment:  # SAT
-                self.best = assignment
-                self.generate_pre()
-                number_of_pre_variables = self.number_of_variables - number_of_base_variables
-                number_of_pre_clauses = self.number_of_clauses - number_of_base_clauses
-                log_debug(f'Pre variables: {number_of_pre_variables}')
-                log_debug(f'Pre clauses: {number_of_pre_clauses}')
-
-                # Note: K=C-1 == unconstrained base reduction
-                for K in reversed(closed_range(0, C - 2)):
-                    log_info(f'Trying C = {C}, K = {K}')
-                    self.K = K
-                    # Revert possible previous variables and constraints
-                    self.number_of_variables = number_of_base_variables + number_of_pre_variables
-                    self.number_of_clauses = number_of_pre_clauses + number_of_base_clauses
-                    self.generate_cardinality()
-
-                    assignment = self.solve()
-                    log_br()
-
-                    if assignment is None:  # UNSAT -> answer is last SAT (self.best)
-                        break
-
-                    self.best = assignment
-                    self.K_best = K
+                if self.K is None:
+                    log_success(f'SAT for C={self.C}')
                 else:
-                    log_warn('Reached K = 0, weird...')
-
-                if self.is_incremental:
-                    self.solver_process.kill()
-
-                log_success(f'BEST: C={self.C}, K={self.K_best}')
-                log_br()
-                break
-            else:
-                if self.is_incremental:
-                    self.solver_process.kill()
-        else:
-            log_error('CAN`T FIND ANYTHING :C')
+                    log_success(f'SAT for C={self.C}, K={self.K}')
+            else:  # UNSAT
+                if self.K is None:
+                    log_error(f'UNSAT for C={self.C}')
+                else:
+                    log_error(f'UNSAT for C={self.C}, K={self.K}')
+            log_br()
 
     def maybe_new_stream(self, filename):
         if not self.is_incremental:
