@@ -76,9 +76,10 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
     time_start = time.time()
 
     log_info('Building scenario tree...')
+    time_start_tree = time.time()
     scenario_tree = ScenarioTree.from_files(filename_scenarios, filename_predicate_names, filename_output_variable_names)
     # scenario_tree.pprint(n=30)
-    log_success(f'Successfully built scenario tree of size {scenario_tree.size()}')
+    log_success(f'Successfully built scenario tree of size {scenario_tree.size()} in {time.time() - time_start_tree:.2f} s')
     log_br()
 
     if not os.path.exists(os.path.dirname(filename_prefix)):
