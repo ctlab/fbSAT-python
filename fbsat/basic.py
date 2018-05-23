@@ -111,9 +111,7 @@ class Instance:
             if self.is_reuse and os.path.exists(filename):
                 log_debug(f'Reusing <{filename}>')
                 self.stream = None
-                return
-
-            if self.write_strategy == 'direct':
+            elif self.write_strategy == 'direct':
                 self.stream = open(filename, 'w')
             elif self.write_strategy == 'tempfile':
                 self.stream = tempfile.NamedTemporaryFile('w', delete=False)
@@ -132,6 +130,7 @@ class Instance:
                     self.stream.seek(0)
                     shutil.copyfileobj(self.stream, f)
                 self.stream.close()
+            self.stream = None
 
     def new_variable(self):
         self.number_of_variables += 1
@@ -248,10 +247,10 @@ class Instance:
             p = tree.parent[v]
             e = tree.input_event[v]
             u = tree.input_number[v]
-            for c1 in closed_range(1, C):
-                for c2 in closed_range(1, C):
-                    # color_p,c1 & color_v,c2 => transition_c1,e,u,c2
-                    self.add_clause(-color[p][c1], -color[v][c2], transition[c1][e][u][c2])
+            for i in closed_range(1, C):
+                for j in closed_range(1, C):
+                    # color_p,i & color_v,j => transition_i,e,u,j
+                    self.add_clause(-color[p][i], -color[v][j], transition[i][e][u][j])
 
         # 2.2. Transition coverage
         for c in closed_range(1, C):
@@ -532,13 +531,13 @@ class Instance:
 
     def get_filenames(self):
         if self.K is not None:
-            return ' '.join((self.get_filename_header(),
-                             self.get_filename_base(),
-                             self.get_filename_pre(),
-                             self.get_filename_cardinality()))
+            return (self.get_filename_header(),
+                    self.get_filename_base(),
+                    self.get_filename_pre(),
+                    self.get_filename_cardinality())
         else:
-            return ' '.join((self.get_filename_header(),
-                             self.get_filename_base()))
+            return (self.get_filename_header(),
+                    self.get_filename_base())
 
     def write_header(self):
         filename = self.get_filename_header()
@@ -555,6 +554,11 @@ class Instance:
             log_debug(f'Reusing merged reduction from <{filename}>')
             return
         log_debug(f'Writing merged reduction to <{filename}>...')
-        cmd_cat = f'cat {self.get_filenames()} > {filename}'
+        cmd_cat = f'cat {" ".join(self.get_filenames())} > {filename}'
         log_debug(cmd_cat, symbol='$')
         subprocess.run(cmd_cat, shell=True)
+        # Replace cat with shutil module:
+        # with open(filename, 'w') as merged:
+        #     for fn in self.get_filenames():
+        #         with open(fn) as f:
+        #             shutil.copyfileobj(f, merged)

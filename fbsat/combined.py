@@ -20,13 +20,15 @@ class Instance:
     Reduction = namedtuple('Reduction', VARIABLES + ' totalizer')
     Assignment = namedtuple('Assignment', VARIABLES + ' number_of_nodes')
 
-    def __init__(self, *, scenario_tree, C, K, P, N_start=0, is_minimize=False, is_incremental=False, sat_solver=None, sat_isolver=None, filename_prefix='', write_strategy='StringIO', is_reuse=False):
+    def __init__(self, *, scenario_tree, C, K, P, N_start=0, is_minimize=False, is_incremental=False, sat_solver, sat_isolver=None, filename_prefix='', write_strategy='StringIO', is_reuse=False):
         assert write_strategy in ('direct', 'tempfile', 'StringIO')
 
         if is_incremental:
             assert sat_isolver is not None, "You need to specify incremental SAT solver using `--sat-isolver` option"
-        else:
-            assert sat_solver is not None, "You need to specify sat-solver using `--sat-solver` option"
+
+        if not is_minimize and is_incremental:
+            log_warn('Not minimizing -> ignoring incremental')
+            is_incremental = False
 
         self.scenario_tree = scenario_tree
         self.C = C
@@ -41,70 +43,52 @@ class Instance:
         self.write_strategy = write_strategy
         self.is_reuse = is_reuse
 
+        if self.is_incremental:
+            self.isolver_process = subprocess.Popen(self.sat_isolver, shell=True, universal_newlines=True,
+                                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        self.stream = None
         self.best = None
         self.N = None
         self.N_defined = None
 
     def run(self):
-        if self.is_incremental:
-            self.solver_process = subprocess.Popen(self.sat_isolver, shell=True, universal_newlines=True,
-                                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-            self.stream = self.solver_process.stdin  # to write uniformly
-
         self.number_of_variables = 0
         self.number_of_clauses = 0
         self.generate_base_reduction()
-        number_of_base_variables = self.number_of_variables
-        number_of_base_clauses = self.number_of_clauses
-        log_debug(f'Base variables: {number_of_base_variables}')
-        log_debug(f'Base clauses: {number_of_base_clauses}')
 
         if self.is_minimize:
             if self.N_start != 0:
                 self.N = self.N_start
-
                 self.generate_totalizer()
-                number_of_totalizer_variables = self.number_of_variables - number_of_base_variables
-                number_of_totalizer_clauses = self.number_of_clauses - number_of_base_clauses
-                log_debug(f'Totalizer variables: {number_of_totalizer_variables}')
-                log_debug(f'Totalizer clauses: {number_of_totalizer_clauses}')
-
+                _nv = self.number_of_variables  # base+totalizer variables
+                _nc = self.number_of_clauses  # base+totalizer clauses
                 self.generate_comparator()
-                number_of_comparator_variables = self.number_of_variables - number_of_base_variables - number_of_totalizer_variables
-                number_of_comparator_clauses = self.number_of_clauses - number_of_base_clauses - number_of_totalizer_clauses
-                log_debug(f'Comparator variables: {number_of_comparator_variables}')
-                log_debug(f'Comparator clauses: {number_of_comparator_clauses}')
 
             assignment = self.solve()
             if assignment:
                 log_debug(f'Initial estimation of number_of_nodes = {assignment.number_of_nodes}')
             log_br()
 
+            # Generate totalizer if it wasn't created
             if assignment and self.N_start == 0:
                 self.generate_totalizer()
-                number_of_totalizer_variables = self.number_of_variables - number_of_base_variables
-                number_of_totalizer_clauses = self.number_of_clauses - number_of_base_clauses
-                log_debug(f'Totalizer variables: {number_of_totalizer_variables}')
-                log_debug(f'Totalizer clauses: {number_of_totalizer_clauses}')
+                _nv = self.number_of_variables  # base+totalizer variables
+                _nc = self.number_of_clauses  # base+totalizer clauses
 
             while assignment is not None:
                 self.best = assignment
                 self.N = assignment.number_of_nodes - 1
                 log_info(f'Trying with N = {self.N}...')
 
-                self.number_of_variables = number_of_base_variables + number_of_totalizer_variables
-                self.number_of_clauses = number_of_base_clauses + number_of_totalizer_clauses
+                self.number_of_variables = _nv
+                self.number_of_clauses = _nc
                 self.generate_comparator()
-                number_of_comparator_variables = self.number_of_variables - number_of_base_variables - number_of_totalizer_variables
-                number_of_comparator_clauses = self.number_of_clauses - number_of_base_clauses - number_of_totalizer_clauses
-                log_debug(f'Comparator variables: {number_of_comparator_variables}')
-                log_debug(f'Comparator clauses: {number_of_comparator_clauses}')
 
                 assignment = self.solve()
                 log_br()
 
             if self.best:
-                log_success(f'Best: C={self.C}, K={self.K}, P={self.P}, N={self.best.number_of_nodes}')
+                log_success(f'Best solution with C={self.C}, K={self.K}, P={self.P} has N={self.best.number_of_nodes}')
             else:
                 log_error('Completely UNSAT :c')
             log_br()
@@ -112,24 +96,14 @@ class Instance:
         else:  # not is_minimize
             if self.N_start != 0:
                 self.N = self.N_start
-
                 self.generate_totalizer()
-                number_of_totalizer_variables = self.number_of_variables - number_of_base_variables
-                number_of_totalizer_clauses = self.number_of_clauses - number_of_base_clauses
-                log_debug(f'Totalizer variables: {number_of_totalizer_variables}')
-                log_debug(f'Totalizer clauses: {number_of_totalizer_clauses}')
-
                 self.generate_comparator()
-                number_of_comparator_variables = self.number_of_variables - number_of_base_variables - number_of_totalizer_variables
-                number_of_comparator_clauses = self.number_of_clauses - number_of_base_clauses - number_of_totalizer_clauses
-                log_debug(f'Comparator variables: {number_of_comparator_variables}')
-                log_debug(f'Comparator clauses: {number_of_comparator_clauses}')
 
             assignment = self.solve()
             log_br()
 
             if assignment:
-                log_success(f'number_of_nodes = {assignment.number_of_nodes}')
+                log_success(f'Solution with C={self.C}, K={self.K}, P={self.P} has N={assignment.number_of_nodes}')
             else:
                 if self.N is None:
                     log_error(f'No solution with C={self.C}, K={self.K}, P={self.P}')
@@ -138,25 +112,24 @@ class Instance:
             log_br()
 
         # in the end
+        # TODO: context manager, __exit__
         if self.is_incremental:
-            self.solver_process.kill()
+            self.isolver_process.kill()
 
     def maybe_new_stream(self, filename):
-        if not self.is_incremental:
-            if self.is_reuse and os.path.exists(filename):
-                log_debug(f'Reusing <{filename}>')
-                self.stream = None
-                return
-
-            if self.write_strategy == 'direct':
-                self.stream = open(filename, 'w')
-            elif self.write_strategy == 'tempfile':
-                self.stream = tempfile.NamedTemporaryFile('w', delete=False)
-            elif self.write_strategy == 'StringIO':
-                self.stream = StringIO()
+        assert self.stream is None, "Please, be careful creating new stream without closing previous one"
+        if self.is_reuse and os.path.exists(filename):
+            log_debug(f'Reusing <{filename}>')
+            self.stream = None
+        elif self.write_strategy == 'direct':
+            self.stream = open(filename, 'w')
+        elif self.write_strategy == 'tempfile':
+            self.stream = tempfile.NamedTemporaryFile('w', delete=False)
+        elif self.write_strategy == 'StringIO':
+            self.stream = StringIO()
 
     def maybe_close_stream(self, filename):
-        if not self.is_incremental and self.stream is not None:
+        if self.stream is not None:
             if self.write_strategy == 'direct':
                 self.stream.close()
             elif self.write_strategy == 'tempfile':
@@ -167,6 +140,13 @@ class Instance:
                     self.stream.seek(0)
                     shutil.copyfileobj(self.stream, f)
                 self.stream.close()
+            self.stream = None
+
+    def feed_isolver(self, filename):
+        assert self.is_incremental, "Do not feed isolver when not solving incrementaly"
+        log_debug(f'Feeding isolver from <{filename}>...')
+        with open(filename) as f:
+            shutil.copyfileobj(f, self.isolver_process.stdin)
 
     def new_variable(self):
         self.number_of_variables += 1
@@ -205,11 +185,13 @@ class Instance:
         C = self.C
         K = self.K
         P = self.P
+        assert self.number_of_variables == 0
+        assert self.number_of_clauses == 0
 
         log_debug(f'Generating base reduction for C={C}, K={K}, P={P}...')
         time_start_base = time.time()
-
-        self.maybe_new_stream(self.get_filename_base())
+        filename = self.get_filename_base()
+        self.maybe_new_stream(filename)
 
         # =-=-=-=-=-=
         #  CONSTANTS
@@ -856,7 +838,10 @@ class Instance:
         #   FINISH
         # =-=-=-=-=
 
-        self.maybe_close_stream(self.get_filename_base())
+        self.maybe_close_stream(filename)
+
+        if self.is_incremental:
+            self.feed_isolver(filename)
 
         self.reduction = self.Reduction(
             color=color,
@@ -881,12 +866,12 @@ class Instance:
         log_debug(f'Done generating base reduction ({self.number_of_variables} variables, {self.number_of_clauses} clauses) in {time.time() - time_start_base:.2f} s')
 
     def generate_totalizer(self):
-        log_debug(f'Generating totalizer...')
+        log_debug('Generating totalizer...')
         time_start_totalizer = time.time()
         _nv = self.number_of_variables
         _nc = self.number_of_clauses
-
-        self.maybe_new_stream(self.get_filename_totalizer())
+        filename = self.get_filename_totalizer()
+        self.maybe_new_stream(filename)
 
         _E = [-self.reduction.nodetype[c][k][p][4]
               for c in closed_range(1, self.C)
@@ -940,32 +925,45 @@ class Instance:
         _S = q.pop()  # set of output variables
         assert len(_E) == len(_S)
 
-        self.maybe_close_stream(self.get_filename_totalizer())
+        self.maybe_close_stream(filename)
+
+        if self.is_incremental:
+            self.feed_isolver(filename)
 
         self.reduction = self.reduction._replace(totalizer=_S)  # Note: totalizer is 0-based!
 
         log_debug(f'Done generating totalizer ({self.number_of_variables-_nv} variables, {self.number_of_clauses-_nc} clauses) in {time.time() - time_start_totalizer:.2f} s')
 
     def generate_comparator(self):
-        log_debug(f'Generating comparator...')
+        log_debug(f'Generating comparator for N={self.N}...')
         time_start_cardinality = time.time()
         _nc = self.number_of_clauses
+        filename = self.get_filename_comparator()
+        self.maybe_new_stream(filename)
 
-        self.maybe_new_stream(self.get_filename_comparator())
-
-        if self.is_incremental and self.N_defined is not None:
-            N_max = self.N_defined
-        else:
-            N_max = self.C * self.K * self.P
+        N_max = self.C * self.K * self.P
+        log_debug(f'COMPARATOR: {[-self.reduction.totalizer[i - 1] for i in reversed(closed_range(self.N + 1, N_max))]}')
 
         # sum(E) <= N   <=>   sum(E) < N + 1
         for i in reversed(closed_range(self.N + 1, N_max)):
             self.add_clause(-self.reduction.totalizer[i - 1])  # Note: totalizer is 0-based!
 
-        if self.is_incremental:
-            self.N_defined = self.N
+        self.maybe_close_stream(filename)
 
-        self.maybe_close_stream(self.get_filename_comparator())
+        # Feed isolver
+        if self.is_incremental:
+            log_debug('Feeding isolver with comparator...')
+            self.stream = self.isolver_process.stdin
+            if self.N_defined is not None:
+                N_max = self.N_defined
+            else:
+                N_max = self.C * self.K * self.P
+
+            for i in reversed(closed_range(self.N + 1, N_max)):
+                self.add_clause(-self.reduction.totalizer[i - 1])  # Note: totalizer is 0-based!
+
+            self.N_defined = self.N
+            self.stream = None
 
         log_debug(f'Done generating comparator ({self.number_of_clauses-_nc} clauses) in {time.time() - time_start_cardinality:.2f} s')
 
@@ -974,7 +972,7 @@ class Instance:
         time_start_solve = time.time()
 
         if self.is_incremental:
-            p = self.solver_process
+            p = self.isolver_process
             p.stdin.write('solve 0\n')  # TODO: pass timeout?
             p.stdin.flush()
 
@@ -1095,13 +1093,13 @@ class Instance:
 
     def get_filenames(self):
         if self.N:
-            return ' '.join((self.get_filename_header(),
-                             self.get_filename_base(),
-                             self.get_filename_totalizer(),
-                             self.get_filename_comparator()))
+            return (self.get_filename_header(),
+                    self.get_filename_base(),
+                    self.get_filename_totalizer(),
+                    self.get_filename_comparator())
         else:
-            return ' '.join((self.get_filename_header(),
-                             self.get_filename_base()))
+            return (self.get_filename_header(),
+                    self.get_filename_base())
 
     def write_header(self):
         filename = self.get_filename_header()
@@ -1118,6 +1116,11 @@ class Instance:
             log_debug(f'Reusing merged reduction from <{filename}>')
             return
         log_debug(f'Writing merged reduction to <{filename}>...')
-        cmd_cat = f'cat {self.get_filenames()} > {filename}'
+        cmd_cat = f'cat {" ".join(self.get_filenames())} > {filename}'
         log_debug(cmd_cat, symbol='$')
         subprocess.run(cmd_cat, shell=True)
+        # Replace cat with shutil module:
+        # with open(filename, 'w') as merged:
+        #     for fn in self.get_filenames():
+        #         with open(fn) as f:
+        #             shutil.copyfileobj(f, merged)
