@@ -186,15 +186,15 @@ class ScenarioTree(treelib.Tree):
         def make_array2(d1, d2):
             return [[None for _ in closed_range(d2)] for _ in closed_range(d1)]
 
-        self.parent = make_array(self.V)
-        self.previous_active = make_array(self.V)
-        self.input_event = make_array(self.V)
-        self.output_event = make_array(self.V)
-        self.input_number = make_array(self.V)
-        self.output_number = make_array(self.V)
-        self.unique_input = make_array2(self.U, self.X)
-        self.unique_output = make_array2(self.Y, self.Z)
-        self.output_value = make_array2(self.V, self.Z)
+        self.parent = make_array(self.V)  # 0..V
+        self.previous_active = make_array(self.V)  # 0..V
+        self.input_event = make_array(self.V)  # 1..E
+        self.output_event = make_array(self.V)  # 0..O
+        self.input_number = make_array(self.V)  # 1..U
+        self.output_number = make_array(self.V)  # 1..Y
+        self.unique_input = make_array2(self.U, self.X)  # bool
+        self.unique_output = make_array2(self.Y, self.Z)  # bool
+        self.output_value = make_array2(self.V, self.Z)  # bool
 
         # self.tree_parent[1] = 0
         # self.tree_previous_active[1] = 0
