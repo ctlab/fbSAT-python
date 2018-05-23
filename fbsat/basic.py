@@ -260,11 +260,9 @@ class Instance:
         # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 
         # 1. Color constraints
-        # 1.0a ALO(color)
+        # 1.0. ALO/AMO(color)
         for v in closed_range(1, V):
             ALO(color[v])
-        # 1.0b AMO(color)
-        for v in closed_range(1, V):
             AMO(color[v])
 
         # 1.1. Root corresponds to start state
@@ -273,10 +271,11 @@ class Instance:
         log_debug(f'1. Clauses: {so_far()}', symbol='STAT')
 
         # 2. Transition constraints
-        # 2.0. AMO(transition)
+        # 2.0. ALO/AMO(transition)
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for u in closed_range(1, U):
+                    ALO(transition[c][e][u])
                     AMO(transition[c][e][u])
 
         # 2.1. Transition definition
@@ -327,11 +326,9 @@ class Instance:
         log_debug(f'3. Clauses: {so_far()}', symbol='STAT')
 
         # 4. Output event constraints
-        # 4.0a. ALO(output_event)
+        # 4.0. ALO/AMO(output_event)
         for c in closed_range(1, C):
             ALO(output_event[c])
-        # 4.0b. AMO(output_event)
-        for c in closed_range(1, C):
             AMO(output_event[c])
 
         # 4.1. Start state does INITO (root's output event)
