@@ -19,7 +19,7 @@ VARIABLES = 'color transition output_event algorithm_0 algorithm_1'
 class Instance:
 
     Reduction = namedtuple('Reduction', VARIABLES + ' nut')
-    Assignment = namedtuple('Assignment', VARIABLES)
+    Assignment = namedtuple('Assignment', VARIABLES + ' C K')
 
     def __init__(self, *, scenario_tree, C=None, C_end=None, K=None, is_minimize=True, is_incremental=False, sat_solver=None, sat_isolver=None, filename_prefix='', write_strategy='StringIO', is_reuse=False):
         assert write_strategy in ('direct', 'tempfile', 'StringIO')
@@ -57,39 +57,67 @@ class Instance:
 
         self.C_given = C
         self.K_given = K
+        self.stream = None
         self.best = None
         self.K_best = None
         self.K_defined = None
 
     def run(self):
         if self.is_minimize:
-            for C in self.C_iter:
-                log_info(f'Trying C = {C}')
+            self.run_minimize()
+        else:
+            self.run_once()
+
+    def run_minimize(self):
+        for C in self.C_iter:
+            log_info(f'Trying C = {C}')
+            self.C = C
+            self.K = None
+            self.number_of_variables = 0
+            self.number_of_clauses = 0
+            self.generate_base()
+
+            assignment = self.solve()
+            log_br()
+
+            if assignment:  # SAT, start minimizing K
+                self.best = assignment
+
+                self.generate_pre()
+                _nv = self.number_of_variables
+                _nc = self.number_of_clauses
+
                 if self.is_incremental:
-                    self.solver_process = subprocess.Popen(self.sat_isolver, shell=True, universal_newlines=True,
-                                                           stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-                    self.stream = self.solver_process.stdin  # to write uniformly
-                self.C = C
-                self.K = None
-                self.number_of_variables = 0
-                self.number_of_clauses = 0
-                self.generate_base()
-
-                assignment = self.solve()
-                log_br()
-
-                if assignment:  # SAT
-                    self.best = assignment
-                    self.generate_pre()
-
-                    _nv = self.number_of_variables
-                    _nc = self.number_of_clauses
+                    self.isolver_process = subprocess.Popen(self.sat_isolver, shell=True, universal_newlines=True,
+                                                            stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+                    self.feed_isolver(self.get_filename_base())
+                    self.feed_isolver(self.get_filename_pre())
 
                     # Note: K=C-1 == unconstrained base reduction
                     for K in reversed(closed_range(0, C - 2)):
-                        log_info(f'Trying C = {C}, K = {K}')
+                        log_info(f'Trying K = {K}')
                         self.K = K
-                        # Revert possible previous variables and constraints
+                        # self.number_of_variables = _nv
+                        # self.number_of_clauses = _nc
+                        # self.generate_cardinality()
+                        self.generate_cardinality_isolver()
+
+                        assignment = self.solve(is_incremental=True)
+                        log_br()
+
+                        if assignment is None:  # UNSAT, the answer is last solution (self.best)
+                            break
+
+                        self.best = assignment  # update best found solution
+                    else:
+                        log_warn('Reached K=0, weird...')
+
+                    self.isolver_process.kill()
+                else:  # non-incrementaly
+                    # Note: K=C-1 == unconstrained base reduction
+                    for K in closed_range(0, C - 2):
+                        log_info(f'Trying K = {K}')
+                        self.K = K
                         self.number_of_variables = _nv
                         self.number_of_clauses = _nc
                         self.generate_cardinality()
@@ -97,66 +125,59 @@ class Instance:
                         assignment = self.solve()
                         log_br()
 
-                        if assignment is None:  # UNSAT -> answer is last SAT (self.best)
+                        if assignment:  # SAT, this is the answer
+                            self.best = assignment
                             break
-
-                        self.best = assignment
-                        self.K_best = K
                     else:
-                        log_warn('Reached K = 0, weird...')
+                        log_warn(f'Reached K=C-2={C-2} and did not find any solution, weird...')
 
-                    if self.is_incremental:
-                        self.solver_process.kill()
+                log_success(f'Best: C={self.best.C}, K={self.best.K}')
+                log_br()
+                break
+        else:  # C_iter exhausted
+            log_error('CAN`T FIND ANYTHING :C')
 
-                    log_success(f'BEST: C={self.C}, K={self.K_best}')
-                    log_br()
-                    break
-                else:
-                    if self.is_incremental:
-                        self.solver_process.kill()
+    def run_once(self):
+        self.C = self.C_given
+        self.K = self.K_given
+
+        self.number_of_variables = 0
+        self.number_of_clauses = 0
+        self.generate_base()
+
+        if self.K is not None:
+            self.generate_pre()
+            self.generate_cardinality()
+
+        assignment = self.solve()
+        log_br()
+
+        if assignment:  # SAT
+            if self.K is None:
+                log_success(f'SAT for C={self.C}')
             else:
-                log_error('CAN`T FIND ANYTHING :C')
-        else:  # not is_minimize
-            self.C = self.C_given
-            self.K = self.K_given
-
-            self.number_of_variables = 0
-            self.number_of_clauses = 0
-            self.generate_base()
-
-            if self.K is not None:
-                self.generate_pre()
-                self.generate_cardinality()
-
-            assignment = self.solve()
-            log_br()
-
-            if assignment:  # SAT
-                if self.K is None:
-                    log_success(f'SAT for C={self.C}')
-                else:
-                    log_success(f'SAT for C={self.C}, K={self.K}')
-            else:  # UNSAT
-                if self.K is None:
-                    log_error(f'UNSAT for C={self.C}')
-                else:
-                    log_error(f'UNSAT for C={self.C}, K={self.K}')
-            log_br()
+                log_success(f'SAT for C={self.C}, K={self.K}')
+        else:  # UNSAT
+            if self.K is None:
+                log_error(f'UNSAT for C={self.C}')
+            else:
+                log_error(f'UNSAT for C={self.C}, K={self.K}')
+        log_br()
 
     def maybe_new_stream(self, filename):
-        if not self.is_incremental:
-            if self.is_reuse and os.path.exists(filename):
-                log_debug(f'Reusing <{filename}>')
-                self.stream = None
-            elif self.write_strategy == 'direct':
-                self.stream = open(filename, 'w')
-            elif self.write_strategy == 'tempfile':
-                self.stream = tempfile.NamedTemporaryFile('w', delete=False)
-            elif self.write_strategy == 'StringIO':
-                self.stream = StringIO()
+        assert self.stream is None, "Please, be careful creating new stream without closing previous one"
+        if self.is_reuse and os.path.exists(filename):
+            log_debug(f'Reusing <{filename}>')
+            self.stream = None
+        elif self.write_strategy == 'direct':
+            self.stream = open(filename, 'w')
+        elif self.write_strategy == 'tempfile':
+            self.stream = tempfile.NamedTemporaryFile('w', delete=False)
+        elif self.write_strategy == 'StringIO':
+            self.stream = StringIO()
 
     def maybe_close_stream(self, filename):
-        if not self.is_incremental and self.stream is not None:
+        if self.stream is not None:
             if self.write_strategy == 'direct':
                 self.stream.close()
             elif self.write_strategy == 'tempfile':
@@ -168,6 +189,12 @@ class Instance:
                     shutil.copyfileobj(self.stream, f)
                 self.stream.close()
             self.stream = None
+
+    def feed_isolver(self, filename):
+        assert self.is_incremental, "Do not feed isolver when not solving incrementaly"
+        log_debug(f'Feeding isolver from <{filename}>...')
+        with open(filename) as f:
+            shutil.copyfileobj(f, self.isolver_process.stdin)
 
     def new_variable(self):
         self.number_of_variables += 1
@@ -204,11 +231,13 @@ class Instance:
 
     def generate_base(self):
         C = self.C
+        assert self.number_of_variables == 0
+        assert self.number_of_clauses == 0
 
         log_debug(f'Generating base reduction for C = {C}...')
         time_start_base = time.time()
-
-        self.maybe_new_stream(self.get_filename_base())
+        filename = self.get_filename_base()
+        self.maybe_new_stream(filename)
 
         # =-=-=-=-=-=
         #  CONSTANTS
@@ -350,7 +379,7 @@ class Instance:
         #   FINISH
         # =-=-=-=-=
 
-        self.maybe_close_stream(self.get_filename_base())
+        self.maybe_close_stream(filename)
 
         self.reduction = self.Reduction(
             color=color,
@@ -361,15 +390,17 @@ class Instance:
             nut=None
         )
 
-        log_debug(f'Done generating base reduction in {time.time() - time_start_base:.2f} s')
+        log_debug(f'Done generating base reduction ({self.number_of_variables} variables, {self.number_of_clauses} clauses) in {time.time() - time_start_base:.2f} s')
 
     def generate_pre(self):
         C = self.C
 
         log_debug(f'Generating transitions existance and pre-cardinality constraints for C = {C}...')
         time_start_pre = time.time()
-
-        self.maybe_new_stream(self.get_filename_pre())
+        _nv = self.number_of_variables
+        _nc = self.number_of_clauses
+        filename = self.get_filename_pre()
+        self.maybe_new_stream(filename)
 
         # =-=-=-=-=-=
         #  CONSTANTS
@@ -422,49 +453,65 @@ class Instance:
         #   FINISH
         # =-=-=-=-=
 
-        self.maybe_close_stream(self.get_filename_pre())
+        self.maybe_close_stream(filename)
 
         self.reduction = self.reduction._replace(nut=nut)
 
-        log_debug(f'Done generating pre in {time.time() - time_start_pre:.2f} s')
+        log_debug(f'Done generating pre ({self.number_of_variables-_nv} variables, {self.number_of_clauses-_nc} clauses) in {time.time() - time_start_pre:.2f} s')
 
     def generate_cardinality(self):
         C = self.C
         K = self.K
 
-        log_debug(f'Generating transitions cardinality...')
+        log_debug(f'Generating transitions cardinality for K={K}...')
         time_start_cardinality = time.time()
+        _nc = self.number_of_clauses
+        filename = self.get_filename_cardinality()
+        self.maybe_new_stream(filename)
 
-        self.maybe_new_stream(self.get_filename_cardinality())
+        K_max = C
 
-        if self.is_incremental and self.K_defined is not None:
-            K_max = self.K_defined
-        else:
-            K_max = C
-
-        log_debug(f'K_defined = {self.K_defined}')
-        log_debug(f'CARDINALITY from K+1 to K_max = {K+1}..{K_max}')
-        log_debug(f'Variables for color C: {[-self.reduction.nut[C][C][k] for k in reversed(closed_range(K + 1, K_max))]}')
-
-        # Transitions cardinality: leq K
-        #  "forbid all states to have K+1 or more transitions"
+        # Transitions cardinality (leq K): "forbid all states to have K+1 or more transitions"
         for c in closed_range(1, C):
             for k in reversed(closed_range(K + 1, K_max)):
                 self.add_clause(-self.reduction.nut[c][C][k])
 
-        if self.is_incremental:
-            self.K_defined = K
+        self.maybe_close_stream(filename)
 
-        self.maybe_close_stream(self.get_filename_cardinality())
+        log_debug(f'Done generating transitions cardinality ({self.number_of_clauses-_nc} clauses) in {time.time() - time_start_cardinality:.2f} s')
 
-        log_debug(f'Done generating transitions cardinality in {time.time() - time_start_cardinality:.2f} s')
+    def generate_cardinality_isolver(self):
+        C = self.C
+        K = self.K
 
-    def solve(self):
+        log_debug(f'Generating transitions cardinality for K={K} and feeding it to isolver...')
+        time_start_cardinality = time.time()
+        _nc = self.number_of_clauses
+        self.stream = self.isolver_process.stdin
+
+        if self.K_defined is not None:
+            K_max = self.K_defined
+        else:
+            K_max = C
+
+        for c in closed_range(1, C):
+            for k in reversed(closed_range(K + 1, K_max)):
+                self.add_clause(-self.reduction.nut[c][C][k])
+
+        self.K_defined = K
+
+        self.stream = None
+
+        log_debug(f'Done feeding cardinality ({self.number_of_clauses-_nc} clauses) to isolver in {time.time() - time_start_cardinality:.2f} s')
+
+    def solve(self, is_incremental):
+        # Note: do not lean on self.is_incremental, use local var instead!
+
         log_info(f'Solving...')
         time_start_solve = time.time()
 
-        if self.is_incremental:
-            p = self.solver_process
+        if is_incremental:
+            p = self.isolver_process
             p.stdin.write('solve 0\n')  # TODO: pass timeout?
             p.stdin.flush()
 
@@ -540,6 +587,8 @@ class Instance:
             output_event=wrapper_int(self.reduction.output_event),
             algorithm_0=wrapper_algo(self.reduction.algorithm_0),
             algorithm_1=wrapper_algo(self.reduction.algorithm_1),
+            C=self.C,
+            K=self.K,
         )
 
         log_debug(f'Done building assignment in {time.time() - time_start_assignment:.2f} s')

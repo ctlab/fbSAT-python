@@ -43,13 +43,9 @@ class Instance:
         self.write_strategy = write_strategy
         self.is_reuse = is_reuse
 
-        if self.is_incremental:
-            self.isolver_process = subprocess.Popen(self.sat_isolver, shell=True, universal_newlines=True,
-                                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE)
         self.stream = None
         self.best = None
         self.N = None
-        self.N_defined = None
 
     def run(self):
         self.number_of_variables = 0
@@ -64,6 +60,14 @@ class Instance:
                 _nc = self.number_of_clauses  # base+totalizer clauses
                 self.generate_comparator()
 
+            if self.is_incremental:
+                self.isolver_process = subprocess.Popen(self.sat_isolver, shell=True, universal_newlines=True,
+                                                        stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+                self.N_defined = None
+                self.feed_isolver(self.get_filename_base())
+                self.feed_isolver(self.get_filename_totalizer())
+                self.generate_comparator_isolver()
+
             assignment = self.solve()
             if assignment:
                 log_debug(f'Initial estimation of number_of_nodes = {assignment.number_of_nodes}')
@@ -75,6 +79,7 @@ class Instance:
                 _nv = self.number_of_variables  # base+totalizer variables
                 _nc = self.number_of_clauses  # base+totalizer clauses
 
+            # Try to minimize number of nodes
             while assignment is not None:
                 self.best = assignment
                 self.N = assignment.number_of_nodes - 1
@@ -84,6 +89,9 @@ class Instance:
                 self.number_of_clauses = _nc
                 self.generate_comparator()
 
+                if self.is_incremental:
+                    self.feed_isolver_comparator()
+
                 assignment = self.solve()
                 log_br()
 
@@ -92,6 +100,9 @@ class Instance:
             else:
                 log_error('Completely UNSAT :c')
             log_br()
+
+            if self.is_incremental:
+                self.isolver_process.kill()
 
         else:  # not is_minimize
             if self.N_start != 0:
@@ -110,11 +121,6 @@ class Instance:
                 else:
                     log_error(f'No solution with C={self.C}, K={self.K}, P={self.P}, N={self.N}')
             log_br()
-
-        # in the end
-        # TODO: context manager, __exit__
-        if self.is_incremental:
-            self.isolver_process.kill()
 
     def maybe_new_stream(self, filename):
         assert self.stream is None, "Please, be careful creating new stream without closing previous one"
@@ -840,9 +846,6 @@ class Instance:
 
         self.maybe_close_stream(filename)
 
-        if self.is_incremental:
-            self.feed_isolver(filename)
-
         self.reduction = self.Reduction(
             color=color,
             transition=transition,
@@ -927,22 +930,18 @@ class Instance:
 
         self.maybe_close_stream(filename)
 
-        if self.is_incremental:
-            self.feed_isolver(filename)
-
         self.reduction = self.reduction._replace(totalizer=_S)  # Note: totalizer is 0-based!
 
         log_debug(f'Done generating totalizer ({self.number_of_variables-_nv} variables, {self.number_of_clauses-_nc} clauses) in {time.time() - time_start_totalizer:.2f} s')
 
     def generate_comparator(self):
         log_debug(f'Generating comparator for N={self.N}...')
-        time_start_cardinality = time.time()
+        time_start_comparator = time.time()
         _nc = self.number_of_clauses
         filename = self.get_filename_comparator()
         self.maybe_new_stream(filename)
 
         N_max = self.C * self.K * self.P
-        log_debug(f'COMPARATOR: {[-self.reduction.totalizer[i - 1] for i in reversed(closed_range(self.N + 1, N_max))]}')
 
         # sum(E) <= N   <=>   sum(E) < N + 1
         for i in reversed(closed_range(self.N + 1, N_max)):
@@ -950,22 +949,28 @@ class Instance:
 
         self.maybe_close_stream(filename)
 
-        # Feed isolver
-        if self.is_incremental:
-            log_debug('Feeding isolver with comparator...')
-            self.stream = self.isolver_process.stdin
-            if self.N_defined is not None:
-                N_max = self.N_defined
-            else:
-                N_max = self.C * self.K * self.P
+        log_debug(f'Done generating comparator ({self.number_of_clauses-_nc} clauses) in {time.time() - time_start_comparator:.2f} s')
 
-            for i in reversed(closed_range(self.N + 1, N_max)):
-                self.add_clause(-self.reduction.totalizer[i - 1])  # Note: totalizer is 0-based!
+    def generate_comparator_isolver(self):
+        assert self.is_incremental
 
-            self.N_defined = self.N
-            self.stream = None
+        log_debug(f'Generating comparator for N={self.N} and feeding it to isolver...')
+        time_start_comparator = time.time()
+        self.stream = self.isolver_process.stdin
 
-        log_debug(f'Done generating comparator ({self.number_of_clauses-_nc} clauses) in {time.time() - time_start_cardinality:.2f} s')
+        if self.N_defined is not None:
+            N_max = self.N_defined
+        else:
+            N_max = self.C * self.K * self.P
+
+        for i in reversed(closed_range(self.N + 1, N_max)):
+            self.add_clause(-self.reduction.totalizer[i - 1])  # Note: totalizer is 0-based!
+
+        self.N_defined = self.N
+
+        self.stream = None
+
+        log_debug(f'Done feeding comparator ({N_max-(self.N+1)} clauses) to isolver in {time.time() - time_start_comparator:.2f} s')
 
     def solve(self):
         log_info('Solving...')

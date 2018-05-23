@@ -63,7 +63,10 @@ CONTEXT_SETTINGS = dict(
               help='Which file-write strategy to use')
 @click.version_option(__version__)
 def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_variable_names, filename_prefix, C, K, P, N, Cmax, is_minimize, is_incremental, is_reuse, sat_solver, sat_isolver, write_strategy):
-    if strategy == 'combined':
+    if strategy == 'basic':
+        if is_incremental and sat_isolver is None:
+            raise click.BadParameter('missing incremental solver', param_hint='sat_isolver')
+    elif strategy == 'combined':
         if C is None:
             raise click.BadParameter('missing value', param_hint='C')
         if K is None:
