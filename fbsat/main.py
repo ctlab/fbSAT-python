@@ -71,8 +71,6 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
             raise click.BadParameter('missing value', param_hint='C')
         if K is None:
             raise click.BadParameter('missing value', param_hint='K')
-        if P is None:
-            raise click.BadParameter('missing value', param_hint='P')
 
     log_info('Welcome!')
     log_br()

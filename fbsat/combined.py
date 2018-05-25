@@ -5,6 +5,7 @@ import time
 import regex
 import shutil
 import tempfile
+import itertools
 import subprocess
 from io import StringIO
 from collections import deque, namedtuple
@@ -20,7 +21,7 @@ class Instance:
     Reduction = namedtuple('Reduction', VARIABLES + ' totalizer')
     Assignment = namedtuple('Assignment', VARIABLES + ' C K P N')
 
-    def __init__(self, *, scenario_tree, C, K, P, N=0, is_minimize=False, is_incremental=False, sat_solver, sat_isolver=None, filename_prefix='', write_strategy='StringIO', is_reuse=False):
+    def __init__(self, *, scenario_tree, C, K, P=None, N=0, is_minimize=False, is_incremental=False, sat_solver, sat_isolver=None, filename_prefix='', write_strategy='StringIO', is_reuse=False):
         assert write_strategy in ('direct', 'tempfile', 'StringIO')
 
         if is_incremental:
@@ -46,10 +47,47 @@ class Instance:
         self.stream = None
 
     def run(self):
-        if self.is_minimize:
-            self.run_minimize()
+        if self.P is None:
+            # TODO: refactor solve method by moving incremental part into manual-callable solve_isolver, it will eliminate next dirty is_inc patch
+            _is_inc = self.is_incremental
+            self.is_incremental = False
+            for P in itertools.islice(itertools.count(1), 15):
+                log_debug(f'Trying P = {P}')
+                self.P = P
+                assignment = self.run_once()
+                if assignment:
+                    log_success(f'Found P = {P}')
+                    log_br()
+                    break
+            else:
+                log_warn('I\'m tired searching for P.')
+            self.is_incremental = _is_inc
+
+            if self.is_minimize:
+                self.run_minimize()
+            else:
+                # Reuse assignment found above
+                if assignment:
+                    log_success(f'Solution with C={self.C}, K={self.K}, P={self.P} has N={assignment.N}')
+                else:
+                    if self.N is None:
+                        log_error(f'No solution with C={self.C}, K={self.K}, P={self.P}')
+                    else:
+                        log_error(f'No solution with C={self.C}, K={self.K}, P={self.P}, N={self.N}')
+                log_br()
         else:
-            self.run_once()
+            if self.is_minimize:
+                self.run_minimize()
+            else:
+                assignment = self.run_once()
+                if assignment:
+                    log_success(f'Solution with C={self.C}, K={self.K}, P={self.P} has N={assignment.N}')
+                else:
+                    if self.N is None:
+                        log_error(f'No solution with C={self.C}, K={self.K}, P={self.P}')
+                    else:
+                        log_error(f'No solution with C={self.C}, K={self.K}, P={self.P}, N={self.N}')
+                log_br()
 
     def run_minimize(self):
         self.best = None
@@ -130,14 +168,7 @@ class Instance:
         assignment = self.solve()
         log_br()
 
-        if assignment:
-            log_success(f'Solution with C={self.C}, K={self.K}, P={self.P} has N={assignment.N}')
-        else:
-            if self.N is None:
-                log_error(f'No solution with C={self.C}, K={self.K}, P={self.P}')
-            else:
-                log_error(f'No solution with C={self.C}, K={self.K}, P={self.P}, N={self.N}')
-        log_br()
+        return assignment
 
     def maybe_new_stream(self, filename):
         assert self.stream is None, "Please, be careful creating new stream without closing previous one"
