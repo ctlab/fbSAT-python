@@ -5,7 +5,6 @@ import time
 import regex
 import shutil
 import tempfile
-import itertools
 import subprocess
 from io import StringIO
 from collections import deque, namedtuple
@@ -48,33 +47,31 @@ class Instance:
 
     def run(self):
         if self.P is None:
-            # TODO: refactor solve method by moving incremental part into manual-callable solve_isolver, it will eliminate next dirty is_inc patch
-            _is_inc = self.is_incremental
-            self.is_incremental = False
-            for P in itertools.islice(itertools.count(1), 15):
-                log_debug(f'Trying P = {P}')
+            for P in [1, 3, 5, 10, 15]:
+                log_info(f'Trying P = {P}')
                 self.P = P
+                # TODO: refactor solve method by moving incremental part into manual-callable solve_isolver, it will eliminate next dirty is_inc patch
+                _is_inc = self.is_incremental
+                self.is_incremental = False
                 assignment = self.run_once()
+                self.is_incremental = _is_inc
+
                 if assignment:
                     log_success(f'Found P = {P}')
                     log_br()
+
+                    if self.is_minimize:
+                        self.run_minimize()
+                    else:
+                        # Reuse assignment found above
+                        log_success(f'Solution with C={self.C}, K={self.K}, P={self.P} has N={assignment.N}')
+                        log_br()
+
                     break
             else:
-                log_warn('I\'m tired searching for P.')
-            self.is_incremental = _is_inc
-
-            if self.is_minimize:
-                self.run_minimize()
-            else:
-                # Reuse assignment found above
-                if assignment:
-                    log_success(f'Solution with C={self.C}, K={self.K}, P={self.P} has N={assignment.N}')
-                else:
-                    if self.N is None:
-                        log_error(f'No solution with C={self.C}, K={self.K}, P={self.P}')
-                    else:
-                        log_error(f'No solution with C={self.C}, K={self.K}, P={self.P}, N={self.N}')
+                log_warn(f'I\'m tired searching for P, are you sure it is SAT with given C and K (C={self.C}, K={self.K})?')
                 log_br()
+
         else:
             if self.is_minimize:
                 self.run_minimize()
@@ -134,7 +131,7 @@ class Instance:
         while assignment is not None:
             self.best = assignment
             self.N = assignment.N - 1
-            log_info(f'Trying with N = {self.N}...')
+            log_info(f'Trying N = {self.N}')
 
             if self.is_incremental:
                 self.generate_comparator_isolver()
