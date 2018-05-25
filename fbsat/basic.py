@@ -21,7 +21,7 @@ class Instance:
     Reduction = namedtuple('Reduction', VARIABLES + ' nut')
     Assignment = namedtuple('Assignment', VARIABLES + ' C K')
 
-    def __init__(self, *, scenario_tree, C=None, C_end=None, K=None, is_minimize=True, is_incremental=False, sat_solver=None, sat_isolver=None, filename_prefix='', write_strategy='StringIO', is_reuse=False):
+    def __init__(self, *, scenario_tree, C=None, K=None, C_max=None, is_minimize=True, is_incremental=False, sat_solver=None, sat_isolver=None, filename_prefix='', write_strategy='StringIO', is_reuse=False):
         assert write_strategy in ('direct', 'tempfile', 'StringIO')
 
         if is_incremental:
@@ -35,6 +35,9 @@ class Instance:
         if not is_minimize:
             assert C is not None, "You need to specify C if not minimizing"
 
+        self.C_given = C
+        self.K_given = K
+        self.C_max = C_max
         self.scenario_tree = scenario_tree
         self.is_minimize = is_minimize
         self.is_incremental = is_incremental
@@ -43,24 +46,7 @@ class Instance:
         self.filename_prefix = filename_prefix
         self.write_strategy = write_strategy
         self.is_reuse = is_reuse
-
-        if C is not None:
-            C_start = C
-        else:
-            C_start = 1
-
-        if C_end is not None:
-            self.C_iter = closed_range(C_start, C_end)
-        else:
-            self.C_iter = itertools.count(C_start)
-            self.C_iter = itertools.islice(self.C_iter, 20)  # FIXME: stub
-
-        self.C_given = C
-        self.K_given = K
         self.stream = None
-        self.best = None
-        self.K_best = None
-        self.K_defined = None
 
     def run(self):
         if self.is_minimize:
@@ -69,73 +55,93 @@ class Instance:
             self.run_once()
 
     def run_minimize(self):
-        for C in self.C_iter:
-            log_info(f'Trying C = {C}')
-            self.C = C
-            self.K = None
-            self.number_of_variables = 0
-            self.number_of_clauses = 0
-            self.generate_base()
+        if self.C_given is None:  # C unspecified -> iterate over C
+            if self.C_max is not None:
+                C_iter = closed_range(1, self.C_max)
+            else:
+                C_iter = itertools.count(1)
+                C_iter = itertools.islice(C_iter, 20)  # FIXME: stub
 
-            assignment = self.solve()
+            for C in C_iter:
+                log_info(f'Trying C = {C}')
+                self.run_minimize_with(C)
+                if self.best:
+                    log_success(f'Best: C={self.best.C}, K={self.best.K}')
+                    log_br()
+                    break
+            else:  # C_iter exhausted
+                log_error('CAN\'T FIND ANYTHING :C')
+
+        else:  # C specified -> use it
+            C = self.C_given
+            log_info(f'Using specified C = {C}')
+            self.run_minimize_with(C)
+            if self.best:
+                log_success(f'Best: C={self.best.C}, K={self.best.K}')
+            else:
+                log_error(f'UNSAT for C = {C}')
             log_br()
 
-            if assignment:  # SAT, start minimizing K
-                self.best = assignment
+    def run_minimize_with(self, C):
+        self.C = C
+        self.K = None
+        self.best = None
+        self.number_of_variables = 0
+        self.number_of_clauses = 0
+        self.generate_base()
 
-                self.generate_pre()
-                _nv = self.number_of_variables
-                _nc = self.number_of_clauses
+        assignment = self.solve()
+        log_br()
 
-                if self.is_incremental:
-                    self.isolver_process = subprocess.Popen(self.sat_isolver, shell=True, universal_newlines=True,
-                                                            stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-                    self.feed_isolver(self.get_filename_base())
-                    self.feed_isolver(self.get_filename_pre())
+        if assignment:  # SAT, start minimizing K
+            self.best = assignment
 
-                    # Note: K=C-1 == unconstrained base reduction
-                    for K in reversed(closed_range(0, C - 2)):
-                        log_info(f'Trying K = {K}')
-                        self.K = K
-                        # self.number_of_variables = _nv
-                        # self.number_of_clauses = _nc
-                        # self.generate_cardinality()
-                        self.generate_cardinality_isolver()
+            self.generate_pre()
+            _nv = self.number_of_variables  # base+pre variables
+            _nc = self.number_of_clauses    # base+pre clauses
 
-                        assignment = self.solve_incremental()
-                        log_br()
+            if self.is_incremental:
+                self.isolver_process = subprocess.Popen(self.sat_isolver, shell=True, universal_newlines=True,
+                                                        stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+                self.feed_isolver(self.get_filename_base())
+                self.feed_isolver(self.get_filename_pre())
 
-                        if assignment is None:  # UNSAT, the answer is last solution (self.best)
-                            break
+                self.K_defined = None
 
-                        self.best = assignment  # update best found solution
-                    else:
-                        log_warn('Reached K=0, weird...')
+                # Note: K=C-1 == unconstrained base reduction
+                for K in reversed(closed_range(0, C - 2)):
+                    log_info(f'Trying K = {K}')
+                    self.K = K
+                    self.generate_cardinality_isolver()
 
-                    self.isolver_process.kill()
-                else:  # non-incrementaly
-                    # Note: K=C-1 == unconstrained base reduction
-                    for K in closed_range(0, C - 2):
-                        log_info(f'Trying K = {K}')
-                        self.K = K
-                        self.number_of_variables = _nv
-                        self.number_of_clauses = _nc
-                        self.generate_cardinality()
+                    assignment = self.solve_incremental()
+                    log_br()
 
-                        assignment = self.solve()
-                        log_br()
+                    if assignment is None:  # UNSAT, the answer is last solution (self.best)
+                        break
 
-                        if assignment:  # SAT, this is the answer
-                            self.best = assignment
-                            break
-                    else:
-                        log_warn(f'Reached K=C-2={C-2} and did not find any solution, weird...')
+                    self.best = assignment  # update best found solution
+                else:
+                    log_warn('Reached K=0, weird...')
 
-                log_success(f'Best: C={self.best.C}, K={self.best.K}')
-                log_br()
-                break
-        else:  # C_iter exhausted
-            log_error('CAN`T FIND ANYTHING :C')
+                self.isolver_process.kill()
+            else:  # non-incrementaly
+                # Note: K=C-1 == unconstrained base reduction
+                for K in closed_range(0, C - 2):
+                    log_info(f'Trying K = {K}')
+                    self.K = K
+                    self.number_of_variables = _nv
+                    self.number_of_clauses = _nc
+                    self.generate_cardinality()
+
+                    assignment = self.solve()
+                    log_br()
+
+                    if assignment:  # SAT, this is the answer
+                        self.best = assignment
+                        break
+                else:
+                    log_warn(f'Reached K=C-2={C-2} and did not find any solution, weird...')
 
     def run_once(self):
         self.C = self.C_given

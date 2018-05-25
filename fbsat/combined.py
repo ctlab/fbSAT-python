@@ -18,9 +18,9 @@ VARIABLES = 'color transition trans_event output_event algorithm_0 algorithm_1 n
 class Instance:
 
     Reduction = namedtuple('Reduction', VARIABLES + ' totalizer')
-    Assignment = namedtuple('Assignment', VARIABLES + ' number_of_nodes')
+    Assignment = namedtuple('Assignment', VARIABLES + ' C K P N')
 
-    def __init__(self, *, scenario_tree, C, K, P, N_start=0, is_minimize=False, is_incremental=False, sat_solver, sat_isolver=None, filename_prefix='', write_strategy='StringIO', is_reuse=False):
+    def __init__(self, *, scenario_tree, C, K, P, N=0, is_minimize=False, is_incremental=False, sat_solver, sat_isolver=None, filename_prefix='', write_strategy='StringIO', is_reuse=False):
         assert write_strategy in ('direct', 'tempfile', 'StringIO')
 
         if is_incremental:
@@ -34,7 +34,8 @@ class Instance:
         self.C = C
         self.K = K
         self.P = P
-        self.N_start = N_start
+        self.N = None
+        self.N_start = N
         self.is_minimize = is_minimize
         self.is_incremental = is_incremental
         self.sat_solver = sat_solver
@@ -42,85 +43,101 @@ class Instance:
         self.filename_prefix = filename_prefix
         self.write_strategy = write_strategy
         self.is_reuse = is_reuse
-
         self.stream = None
-        self.best = None
-        self.N = None
 
     def run(self):
+        if self.is_minimize:
+            self.run_minimize()
+        else:
+            self.run_once()
+
+    def run_minimize(self):
+        self.best = None
         self.number_of_variables = 0
         self.number_of_clauses = 0
         self.generate_base_reduction()
 
-        if self.is_minimize:
-            if self.N_start != 0:
-                self.N = self.N_start
-                self.generate_totalizer()
-                _nv = self.number_of_variables  # base+totalizer variables
-                _nc = self.number_of_clauses  # base+totalizer clauses
-                self.generate_comparator()
+        if self.is_incremental:
+            self.isolver_process = subprocess.Popen(self.sat_isolver, shell=True, universal_newlines=True,
+                                                    stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+            self.feed_isolver(self.get_filename_base())
+
+        # Declare totalizer+comparator for given N
+        if self.N_start != 0:
+            self.N = self.N_start
+            self.generate_totalizer()
+            _nv = self.number_of_variables  # base+totalizer variables
+            _nc = self.number_of_clauses  # base+totalizer clauses
 
             if self.is_incremental:
-                self.isolver_process = subprocess.Popen(self.sat_isolver, shell=True, universal_newlines=True,
-                                                        stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-                self.N_defined = None
-                self.feed_isolver(self.get_filename_base())
                 self.feed_isolver(self.get_filename_totalizer())
                 self.generate_comparator_isolver()
+            else:
+                self.generate_comparator()
 
-            assignment = self.solve()
-            if assignment:
-                log_debug(f'Initial estimation of number_of_nodes = {assignment.number_of_nodes}')
-            log_br()
+        assignment = self.solve()
+        if assignment:
+            log_debug(f'Initial estimation of number_of_nodes = {assignment.N}')
+        log_br()
 
-            # Generate totalizer if it wasn't created
-            if assignment and self.N_start == 0:
-                self.generate_totalizer()
-                _nv = self.number_of_variables  # base+totalizer variables
-                _nc = self.number_of_clauses  # base+totalizer clauses
+        if self.is_incremental:
+            self.N_defined = None
 
-            # Try to minimize number of nodes
-            while assignment is not None:
-                self.best = assignment
-                self.N = assignment.number_of_nodes - 1
-                log_info(f'Trying with N = {self.N}...')
+        # Generate totalizer if it wasn't created
+        if assignment and self.N_start == 0:
+            self.generate_totalizer()
+            _nv = self.number_of_variables  # base+totalizer variables
+            _nc = self.number_of_clauses  # base+totalizer clauses
 
+            if self.is_incremental:
+                self.feed_isolver(self.get_filename_totalizer())
+
+        # Try to minimize number of nodes
+        while assignment is not None:
+            self.best = assignment
+            self.N = assignment.N - 1
+            log_info(f'Trying with N = {self.N}...')
+
+            if self.is_incremental:
+                self.generate_comparator_isolver()
+            else:
                 self.number_of_variables = _nv
                 self.number_of_clauses = _nc
                 self.generate_comparator()
 
-                if self.is_incremental:
-                    self.feed_isolver_comparator()
-
-                assignment = self.solve()
-                log_br()
-
-            if self.best:
-                log_success(f'Best solution with C={self.C}, K={self.K}, P={self.P} has N={self.best.number_of_nodes}')
-            else:
-                log_error('Completely UNSAT :c')
-            log_br()
-
-            if self.is_incremental:
-                self.isolver_process.kill()
-
-        else:  # not is_minimize
-            if self.N_start != 0:
-                self.N = self.N_start
-                self.generate_totalizer()
-                self.generate_comparator()
-
             assignment = self.solve()
             log_br()
 
-            if assignment:
-                log_success(f'Solution with C={self.C}, K={self.K}, P={self.P} has N={assignment.number_of_nodes}')
+        if self.best:
+            log_success(f'Best solution with C={self.best.C}, K={self.best.K}, P={self.best.P} has N={self.best.N}')
+        else:
+            log_error('Completely UNSAT :c')
+        log_br()
+
+        if self.is_incremental:
+            self.isolver_process.kill()
+
+    def run_once(self):
+        self.number_of_variables = 0
+        self.number_of_clauses = 0
+        self.generate_base_reduction()
+
+        if self.N_start != 0:
+            self.N = self.N_start
+            self.generate_totalizer()
+            self.generate_comparator()
+
+        assignment = self.solve()
+        log_br()
+
+        if assignment:
+            log_success(f'Solution with C={self.C}, K={self.K}, P={self.P} has N={assignment.N}')
+        else:
+            if self.N is None:
+                log_error(f'No solution with C={self.C}, K={self.K}, P={self.P}')
             else:
-                if self.N is None:
-                    log_error(f'No solution with C={self.C}, K={self.K}, P={self.P}')
-                else:
-                    log_error(f'No solution with C={self.C}, K={self.K}, P={self.P}, N={self.N}')
-            log_br()
+                log_error(f'No solution with C={self.C}, K={self.K}, P={self.P}, N={self.N}')
+        log_br()
 
     def maybe_new_stream(self, filename):
         assert self.stream is None, "Please, be careful creating new stream without closing previous one"
@@ -956,6 +973,7 @@ class Instance:
 
         log_debug(f'Generating comparator for N={self.N} and feeding it to isolver...')
         time_start_comparator = time.time()
+        _nc = self.number_of_clauses
         self.stream = self.isolver_process.stdin
 
         if self.N_defined is not None:
@@ -970,7 +988,7 @@ class Instance:
 
         self.stream = None
 
-        log_debug(f'Done feeding comparator ({N_max-(self.N+1)} clauses) to isolver in {time.time() - time_start_comparator:.2f} s')
+        log_debug(f'Done feeding comparator ({self.number_of_clauses-_nc} clauses) to isolver in {time.time() - time_start_comparator:.2f} s')
 
     def solve(self):
         log_info('Solving...')
@@ -1066,10 +1084,13 @@ class Instance:
             child_value_right=wrapper_bool(self.reduction.child_value_right),
             fired_only=wrapper_bool(self.reduction.fired_only),
             not_fired=wrapper_bool(self.reduction.not_fired),
-            number_of_nodes=sum(nodetype[c][k][p] != 4
-                                for c in closed_range(1, self.C)
-                                for k in closed_range(1, self.K)
-                                for p in closed_range(1, self.P))
+            C=self.C,
+            K=self.K,
+            P=self.P,
+            N=sum(nodetype[c][k][p] != 4
+                  for c in closed_range(1, self.C)
+                  for k in closed_range(1, self.K)
+                  for p in closed_range(1, self.P)),
         )
 
         log_debug(f'Done building assignment in {time.time() - time_start_assignment:.2f} s')

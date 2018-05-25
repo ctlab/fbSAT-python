@@ -43,7 +43,7 @@ CONTEXT_SETTINGS = dict(
 @click.option('-N', 'N', type=int, metavar='<int>', default=0,
               help='Initial upper bound on total number of nodes in all guard-trees')
 @click.option('-Cmax', 'Cmax', type=int, metavar='<int>',
-              help='[Basic] C_end')
+              help='[Basic] C_max')
 @click.option('--min', 'is_minimize', is_flag=True,
               help='Do minimize')
 @click.option('--incremental', 'is_incremental', is_flag=True,
@@ -94,7 +94,7 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
     if strategy == 'basic':
         log_info('Basic strategy')
         config = dict(scenario_tree=scenario_tree,
-                      C=C, K=K, C_end=Cmax,
+                      C=C, K=K, C_max=Cmax,
                       is_minimize=is_minimize,
                       is_incremental=is_incremental,
                       sat_solver=sat_solver,
@@ -106,7 +106,7 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
     elif strategy == 'combined':
         log_info('Combined strategy')
         config = dict(scenario_tree=scenario_tree,
-                      C=C, K=K, P=P, N_start=N,
+                      C=C, K=K, P=P, N=N,
                       is_minimize=is_minimize,
                       is_incremental=is_incremental,
                       sat_solver=sat_solver,
