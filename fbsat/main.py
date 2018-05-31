@@ -1,12 +1,14 @@
 import os
 import time
+import pickle
 
 import click
 
 from .basic import Instance as InstanceBasic
-# from .minimize import Instance as InstanceMinimize
+from .minimize import Instance as InstanceMinimize
 from .combined import Instance as InstanceCombined
 from .scenario import *
+from .efsm import *
 from .utils import *
 from .printers import *
 from version import __version__
@@ -18,7 +20,7 @@ CONTEXT_SETTINGS = dict(
 
 
 @click.command(context_settings=CONTEXT_SETTINGS)
-@click.argument('strategy')
+@click.argument('strategy', type=click.Choice(['basic', 'minimize', 'combined']))
 @click.option('-i', '--scenarios', 'filename_scenarios', metavar='<path/->', required=True,
               type=click.Path(exists=True, allow_dash=True),
               help='File with scenarios')
@@ -30,6 +32,7 @@ CONTEXT_SETTINGS = dict(
               type=click.Path(exists=True),
               default='output-variables', show_default=True,
               help='File with output variables names')
+# TODO: replace filename prefix with output directory and maybe filename template
 @click.option('--prefix', 'filename_prefix', metavar='<path>',
               type=click.Path(writable=True),
               default='cnf/cnf', show_default=True,
@@ -58,14 +61,19 @@ CONTEXT_SETTINGS = dict(
 @click.option('--sat-isolver', metavar='<cmd>',
               default='incremental-lingeling', show_default=True,
               help='Incremental SAT solver')
+@click.option('--mzn-solver', metavar='<cmd>',
+              default='mzn-fzn --solver fz', show_default=True,
+              help='Minizinc solver')
 @click.option('--write-strategy', type=click.Choice(['direct', 'tempfile', 'StringIO']),
               default='StringIO', show_default=True,
               help='Which file-write strategy to use')
 @click.version_option(__version__)
-def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_variable_names, filename_prefix, C, K, P, N, Cmax, is_minimize, is_incremental, is_reuse, sat_solver, sat_isolver, write_strategy):
+def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_variable_names, filename_prefix, C, K, P, N, Cmax, is_minimize, is_incremental, is_reuse, sat_solver, sat_isolver, mzn_solver, write_strategy):
     if strategy == 'basic':
         if is_incremental and sat_isolver is None:
             raise click.BadParameter('missing incremental solver', param_hint='sat_isolver')
+        if not is_minimize and C is None:
+            raise click.BadParameter('missing value', param_hint='C')
     elif strategy == 'combined':
         if C is None:
             raise click.BadParameter('missing value', param_hint='C')
@@ -101,6 +109,17 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
                       write_strategy=write_strategy,
                       is_reuse=is_reuse)
         InstanceBasic(**config).run()
+    elif strategy == 'minimize':
+        log_info('Minimize strategy')
+        with open(filename_prefix + '_automaton', 'rb') as f:
+            efsm = pickle.load(f)
+        config = dict(scenario_tree=scenario_tree,
+                      efsm=efsm,
+                      mzn_solver=mzn_solver,
+                      filename_prefix=filename_prefix,
+                      write_strategy=write_strategy,
+                      is_reuse=is_reuse)
+        InstanceMinimize(**config).run()
     elif strategy == 'combined':
         log_info('Combined strategy')
         config = dict(scenario_tree=scenario_tree,

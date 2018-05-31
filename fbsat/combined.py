@@ -989,8 +989,8 @@ class Instance:
         N_max = self.C * self.K * self.P
 
         # sum(E) <= N   <=>   sum(E) < N + 1
-        for i in reversed(closed_range(self.N + 1, N_max)):
-            self.add_clause(-self.reduction.totalizer[i - 1])  # Note: totalizer is 0-based!
+        for n in reversed(closed_range(self.N + 1, N_max)):
+            self.add_clause(-self.reduction.totalizer[n - 1])  # Note: totalizer is 0-based!
 
         self.maybe_close_stream(filename)
 

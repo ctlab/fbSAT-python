@@ -4,12 +4,14 @@ import os
 import time
 import regex
 import shutil
+import pickle
 import tempfile
 import itertools
 import subprocess
 from io import StringIO
-from collections import namedtuple
+from collections import deque, namedtuple
 
+from .efsm import *
 from .utils import *
 from .printers import *
 
@@ -18,7 +20,7 @@ VARIABLES = 'color transition output_event algorithm_0 algorithm_1'
 
 class Instance:
 
-    Reduction = namedtuple('Reduction', VARIABLES + ' nut')
+    Reduction = namedtuple('Reduction', VARIABLES + ' tr totalizers')
     Assignment = namedtuple('Assignment', VARIABLES + ' C K')
 
     def __init__(self, *, scenario_tree, C=None, K=None, C_max=None, is_minimize=True, is_incremental=False, sat_solver=None, sat_isolver=None, filename_prefix='', write_strategy='StringIO', is_reuse=False):
@@ -53,6 +55,24 @@ class Instance:
             self.run_minimize()
         else:
             self.run_once()
+
+        if self.best:
+            efsm = self.build_efsm(self.best)
+
+            filename_automaton = f'{self.filename_prefix}_automaton'
+            with open(filename_automaton, 'wb') as f:
+                pickle.dump(efsm, f, pickle.HIGHEST_PROTOCOL)
+
+            filename_gv = f'{self.filename_prefix}_C{self.best.C}{self.maybe_k(self.best.K)}_efsm.gv'
+            os.makedirs(os.path.dirname(filename_gv), exist_ok=True)
+            efsm.write_gv(filename_gv)
+
+            output_format = 'svg'
+            cmd = f'dot -T{output_format} {filename_gv} -O'
+            log_debug(cmd, symbol='$')
+            os.system(cmd)
+
+            efsm.verify(self.scenario_tree)
 
     def run_minimize(self):
         if self.C_given is None:  # C unspecified -> iterate over C
@@ -143,6 +163,8 @@ class Instance:
                 else:
                     log_warn(f'Reached K=C-2={C-2} and did not find any solution, weird...')
 
+        return self.best
+
     def run_once(self):
         self.C = self.C_given
         self.K = self.K_given
@@ -157,6 +179,7 @@ class Instance:
 
         assignment = self.solve()
         log_br()
+        self.best = assignment
 
         if assignment:  # SAT
             if self.K is None:
@@ -235,6 +258,57 @@ class Instance:
         else:
             raise ValueError(f'unsupported number of dimensions ({n})')
 
+    def get_totalizer(self, _E):
+        # _E is a set of input variables
+        _L = []  # set of linking variables
+        q = deque([e] for e in _E)
+        while len(q) != 1:
+            a = q.popleft()  # 0-based
+            b = q.popleft()  # 0-based
+
+            m1 = len(a)
+            m2 = len(b)
+            m = m1 + m2
+
+            r = [self.new_variable() for _ in range(m)]  # 0-based
+
+            if len(q) != 0:
+                _L.extend(r)
+
+            for alpha in closed_range(m1):
+                for beta in closed_range(m2):
+                    sigma = alpha + beta
+
+                    if sigma == 0:
+                        C1 = None
+                    elif alpha == 0:
+                        C1 = [-b[beta - 1], r[sigma - 1]]
+                    elif beta == 0:
+                        C1 = [-a[alpha - 1], r[sigma - 1]]
+                    else:
+                        C1 = [-a[alpha - 1], -b[beta - 1], r[sigma - 1]]
+
+                    if sigma == m:
+                        C2 = None
+                    elif alpha == m1:
+                        C2 = [b[beta], -r[sigma]]
+                    elif beta == m2:
+                        C2 = [a[alpha], -r[sigma]]
+                    else:
+                        C2 = [a[alpha], b[beta], -r[sigma]]
+
+                    if C1 is not None:
+                        self.add_clause(*C1)
+                    if C2 is not None:
+                        self.add_clause(*C2)
+
+            q.append(r)
+
+        _S = q.pop()  # set of output variables
+        assert len(_E) == len(_S)
+
+        return _S
+
     def generate_base(self):
         C = self.C
         assert self.number_of_variables == 0
@@ -253,10 +327,18 @@ class Instance:
         V = tree.V
         E = tree.E
         O = tree.O
-        # X = tree.X
+        X = tree.X  #
         Z = tree.Z
         U = tree.U
-        # Y = tree.Y
+        Y = tree.Y  #
+
+        log_debug(f'V = {V}')
+        log_debug(f'E = {E}')
+        log_debug(f'O = {O}')
+        log_debug(f'X = {X}')
+        log_debug(f'Z = {Z}')
+        log_debug(f'U = {U}')
+        log_debug(f'Y = {Y}')
 
         # =-=-=-=-=-=
         #  VARIABLES
@@ -303,6 +385,17 @@ class Instance:
         # 1.1. Root corresponds to start state
         self.add_clause(color[1][1])
 
+        # 1.2. Color definition
+        for v in closed_range(2, V):
+            for c in closed_range(1, C):
+                if tree.output_event[v] == 0:
+                    # IF toe[v]=0 THEN color[v,c] <=> color[parent[v],c]
+                    self.add_clause(-color[v][c], color[tree.parent[v]][c])
+                    self.add_clause(color[v][c], -color[tree.parent[v]][c])
+                else:
+                    # IF toe[v]!=0 THEN not (color[v,c] and color[parent[v],c])
+                    self.add_clause(-color[v][c], -color[tree.parent[v]][c])
+
         log_debug(f'1. Clauses: {so_far()}', symbol='STAT')
 
         # 2. Transition constraints
@@ -314,25 +407,33 @@ class Instance:
                     AMO(transition[c][e][u])
 
         # 2.1. Transition definition
-        for v in closed_range(2, V):
-            p = tree.parent[v]
-            e = tree.input_event[v]
-            u = tree.input_number[v]
-            for i in closed_range(1, C):
-                for j in closed_range(1, C):
-                    # color_p,i & color_v,j => transition_i,e,u,j
-                    self.add_clause(-color[p][i], -color[v][j], transition[i][e][u][j])
+        for i in closed_range(1, C):
+            for j in closed_range(1, C):
+                if i == j:
+                    continue
+                for e in closed_range(1, E):
+                    for u in closed_range(1, U):
+                        # transition[i,e,u,j] <=> OR_{v|...}( color[parent[v],i] & color[v,j] )
+                        t = transition[i][e][u][j]
+                        rhs = []
+                        for v in closed_range(2, V):
+                            if tree.input_event[v] == e and tree.input_number[v] == u and tree.output_event[v] != 0:
+                                # aux <=> color[parent[v],i] & color[v,j]
+                                aux = self.new_variable()
+                                self.add_clause(aux, -color[tree.parent[v]][i], -color[v][j])
+                                self.add_clause(color[tree.parent[v]][i], -aux)
+                                self.add_clause(color[v][j], -aux)
 
-        # 2.2. Transition coverage
-        for c in closed_range(1, C):
-            for e in closed_range(1, E):
-                for u in closed_range(1, U):
-                    # not transition_c,e,u,c => OR_{v in V | tie[v]==e and tin[v]=u} color_parent[v],c
-                    rhs = []
-                    for v in closed_range(1, V):
-                        if tree.input_event[v] == e and tree.input_number[v] == u:
-                            rhs.append(color[tree.parent[v]][c])
-                    self.add_clause(transition[c][e][u][c], *rhs)
+                                self.add_clause(t, -aux)
+                                rhs.append(aux)
+                        self.add_clause(-t, *rhs)
+
+        # 2.2. Self-loops
+        for v in closed_range(2, V):
+            for c in closed_range(1, C):
+                # IF toe[v]=0 THEN color[v,c] => transition[c,tie[v],tin[v],c]
+                if tree.output_event[v] == 0:
+                    self.add_clause(-color[v][c], transition[c][tree.input_event[v]][tree.input_number[v]][c])
 
         log_debug(f'2. Clauses: {so_far()}', symbol='STAT')
 
@@ -371,9 +472,14 @@ class Instance:
 
         # 4.2. Output event is the same as in the tree
         for v in closed_range(2, V):
-            if tree.output_event[v] != 0:
-                for c in closed_range(1, C):
-                    self.add_clause(-color[v][c], output_event[c][tree.output_event[v]])
+            o = tree.output_event[v]
+            for c in closed_range(1, C):
+                if o == 0:
+                    # IF toe[v]=0 THEN color[v,c] => output_event[c,toe[tpa[v]]]
+                    self.add_clause(-color[v][c], output_event[c][tree.output_event[tree.previous_active[v]]])
+                else:
+                    # IF toe[v]!=0 THEN color[v,c] => output_event[c,toe[v]]
+                    self.add_clause(-color[v][c], output_event[c][o])
 
         log_debug(f'4. Clauses: {so_far()}', symbol='STAT')
 
@@ -393,7 +499,8 @@ class Instance:
             output_event=output_event,
             algorithm_0=algorithm_0,
             algorithm_1=algorithm_1,
-            nut=None
+            tr=None,
+            totalizers=None
         )
 
         log_debug(f'Done generating base reduction ({self.number_of_variables} variables, {self.number_of_clauses} clauses) in {time.time() - time_start_base:.2f} s')
@@ -422,7 +529,7 @@ class Instance:
 
         transition = self.reduction.transition
         tr = self.declare_array(C, C)
-        nut = self.declare_array(C, C, C, with_zero=True)
+        # nut = self.declare_array(C, C, C, with_zero=True)
 
         # =-=-=-=-=-=-=
         #  CONSTRAINTS
@@ -433,8 +540,8 @@ class Instance:
             for j in closed_range(1, C):
                 if i == j:
                     continue
+                # tr_{i,j} <=> OR_{e,u}(transition_{i,e,u,j})
                 rhs = []
-                # FIXME: my favorite moment is "for (int e = 0; e < 1; e++)", seriously, up to 1???
                 for e in closed_range(1, E):
                     for u in closed_range(1, U):
                         t = transition[i][e][u][j]
@@ -442,18 +549,11 @@ class Instance:
                         rhs.append(t)
                 self.add_clause(*rhs, -tr[i][j])
 
-        # Transitions cardinality
-        #  "any state has at least zero transitions"
+        # Pretend that self-loops do not exist
         for c in closed_range(1, C):
-            self.add_clause(nut[c][1][0])
+            self.add_clause(-tr[c][c])
 
-        #  *silence*
-        for i in closed_range(1, C):
-            for j in closed_range(2, C):
-                for k in closed_range(0, C - 1):
-                    self.add_clause(-nut[i][j - 1][k], -tr[i][j], nut[i][j][k + 1])
-                for k in closed_range(0, C):
-                    self.add_clause(-nut[i][j - 1][k], tr[i][j], nut[i][j][k])
+        totalizers = [None] + [self.get_totalizer(tr[i][1:]) for i in closed_range(1, C)]
 
         # =-=-=-=-=
         #   FINISH
@@ -461,7 +561,7 @@ class Instance:
 
         self.maybe_close_stream(filename)
 
-        self.reduction = self.reduction._replace(nut=nut)
+        self.reduction = self.reduction._replace(tr=tr, totalizers=totalizers)
 
         log_debug(f'Done generating pre ({self.number_of_variables-_nv} variables, {self.number_of_clauses-_nc} clauses) in {time.time() - time_start_pre:.2f} s')
 
@@ -480,7 +580,7 @@ class Instance:
         # Transitions cardinality (leq K): "forbid all states to have K+1 or more transitions"
         for c in closed_range(1, C):
             for k in reversed(closed_range(K + 1, K_max)):
-                self.add_clause(-self.reduction.nut[c][C][k])
+                self.add_clause(-self.reduction.totalizers[c][k - 1])  # Note: each totalizer is 0-based!
 
         self.maybe_close_stream(filename)
 
@@ -598,11 +698,34 @@ class Instance:
             K=self.K,
         )
 
+        # ===========
+        # log_debug('color toe')
+        # for v in closed_range(1, len(self.scenario_tree)):
+        #     log_debug(f'{assignment.color[v]: ^5} {self.scenario_tree.output_event[v]: ^3}')
+        # ===========
+
+        # ===============
+        if self.reduction.tr is not None:
+            C = self.C
+            tr = wrapper_bool(self.reduction.tr)
+            log_debug('transition existance:')
+            for i in closed_range(1, C):
+                log_debug(f' >  {i} -> {[j for j in closed_range(1, C) if tr[i][j]]}', symbol=None)
+
+            max_K = max(len([j for j in closed_range(1, C) if tr[i][j]]) for i in closed_range(1, C))
+            log_debug(f'Max K: {max_K}')
+            if max_K < self.K:
+                log_warn(f'max_K({max_K}) < self.K({self.K}), consider using K = {max_K}')
+            assert max_K <= self.K
+        # ===============
+
         log_debug(f'Done building assignment in {time.time() - time_start_assignment:.2f} s')
         return assignment
 
-    def maybe_k(self):
-        return f'_K{self.K}' if self.K is not None else ''
+    def maybe_k(self, K='default'):
+        if K == 'default':
+            K = self.K
+        return f'_K{K}' if K is not None else ''
 
     def get_filename_base(self):
         return f'{self.filename_prefix}_C{self.C}_base.dimacs'
@@ -652,3 +775,41 @@ class Instance:
         #     for fn in self.get_filenames():
         #         with open(fn) as f:
         #             shutil.copyfileobj(f, merged)
+
+    def build_efsm(self, assignment):
+        log_debug('Building EFSM...')
+        time_start_build = time.time()
+
+        tree = self.scenario_tree
+        C = assignment.C
+        E = tree.E
+        U = tree.U
+        input_events = tree.input_events  # [1..E]:InputEvent::str
+        output_events = tree.output_events  # [1..O]:OutputEvent::str
+        unique_input = tree.unique_input  # [1..U, 1..X]:Bool
+
+        efsm = EFSM()
+        for c in closed_range(1, C):
+            efsm.add_state(c,
+                           output_events[assignment.output_event[c] - 1],
+                           assignment.algorithm_0[c],
+                           assignment.algorithm_1[c])
+        efsm.initial_state = 1
+
+        for c in closed_range(1, C):
+            for e in closed_range(1, E):
+                for u in closed_range(1, U):
+                    dest = assignment.transition[c][e][u]
+                    if dest != c:
+                        guard = Guard.from_input(unique_input[u])
+                        # log_debug(f'GUARD from {c} to {dest} by e={e}, u={u}: {guard}')
+                        efsm.add_transition(c, dest, input_events[e - 1], guard)
+                    # else:
+                    #     log_debug(f'No transition from {c} for e={e}, u={u}')
+
+        # =======================
+        efsm.pprint()
+        # =======================
+
+        log_debug(f'Done building EFSM with {efsm.number_of_states} states, {efsm.number_of_transitions} transitions and {efsm.number_of_nodes} nodes in {time.time() - time_start_build:.2f} s')
+        return efsm
