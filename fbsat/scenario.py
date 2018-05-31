@@ -7,6 +7,7 @@ import regex
 import click
 import treelib
 
+from .efsm import Guard
 from .utils import *
 from .printers import *
 
@@ -239,6 +240,11 @@ class ScenarioTree(treelib.Tree):
         tree = ScenarioTree(scenarios)
         tree.predicate_names = read_names(filename_predicate_names)
         tree.output_variable_names = read_names(filename_output_variable_names)
+        # ===========
+        # FIXME: dirty
+        Guard.Node.predicate_names = tree.predicate_names
+        Guard.Node.output_variable_names = tree.output_variable_names
+        # ===========
         return tree
 
     @property
