@@ -87,6 +87,7 @@ class Instance:
                         f.write(f' |]\n')
 
                     cmd = f'{self.mzn_solver} minizinc/one-transition-hybrid.mzn {filename}'
+                    # cmd = f'mzn2fzn minizinc/one-transition-hybrid.mzn {filename} -O x.ozn -o x.fzn && fzn-gecode x.fzn | solns2out x.ozn && rm x.fzn x.ozn'
                     log_debug(cmd)
                     p = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE,
                                        stderr=subprocess.STDOUT,
@@ -105,13 +106,13 @@ class Instance:
                         elif '------' in line:
                             ok = True
                             break
-                        elif '# nodetype = ' in line:
+                        elif line.startswith('# nodetype = '):
                             nodetype = [None] + list(map(int, line.split(' = ')[1][1:-1].split(', ')))
-                        elif '# terminal = ' in line:
+                        elif line.startswith('# terminal = '):
                             terminal = [None] + list(map(int, line.split(' = ')[1][1:-1].split(', ')))
-                        elif '# parent = ' in line:
+                        elif line.startswith('# parent = '):
                             parent = [None] + list(map(int, line.split(' = ')[1][1:-1].split(', ')))
-                        elif '# left-child = ' in line:
+                        elif line.startswith('# left-child = '):
                             child_left = [None] + list(map(int, line.split(' = ')[1][1:-1].split(', ')))
                     else:
                         log_error('Maybe UNSAT!')
