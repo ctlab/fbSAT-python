@@ -492,7 +492,6 @@ class Instance:
         # =-=-=-=-=
 
         self.maybe_close_stream(filename)
-
         self.reduction = self.Reduction(
             color=color,
             transition=transition,
@@ -560,7 +559,6 @@ class Instance:
         # =-=-=-=-=
 
         self.maybe_close_stream(filename)
-
         self.reduction = self.reduction._replace(tr=tr, totalizers=totalizers)
 
         log_debug(f'Done generating pre ({self.number_of_variables-_nv} variables, {self.number_of_clauses-_nc} clauses) in {time.time() - time_start_pre:.2f} s')
@@ -602,10 +600,9 @@ class Instance:
 
         for c in closed_range(1, C):
             for k in reversed(closed_range(K + 1, K_max)):
-                self.add_clause(-self.reduction.nut[c][C][k])
+                self.add_clause(-self.reduction.totalizers[c][k - 1])  # Note: each totalizer is 0-based!
 
         self.K_defined = K
-
         self.stream = None
 
         log_debug(f'Done feeding cardinality ({self.number_of_clauses-_nc} clauses) to isolver in {time.time() - time_start_cardinality:.2f} s')
