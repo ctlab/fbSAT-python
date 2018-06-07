@@ -62,7 +62,8 @@ CONTEXT_SETTINGS = dict(
               default='incremental-lingeling', show_default=True,
               help='Incremental SAT solver')
 @click.option('--mzn-solver', metavar='<cmd>',
-              default='mzn-fzn --solver fz', show_default=True,
+              default='minizinc --fzn-cmd fzn-gecode', show_default=True,
+              # default='mzn-fzn --solver fz', show_default=True,
               help='Minizinc solver')
 @click.option('--write-strategy', type=click.Choice(['direct', 'tempfile', 'StringIO']),
               default='StringIO', show_default=True,
