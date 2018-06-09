@@ -347,7 +347,7 @@ class EFSM:
                 elif output_event != element.output_event:
                     log_error(f'incorrect output_event (oe={output_event} != elem.oe={element.output_event})', symbol=f'{j}/{len(path)-1}')
                 elif new_values != element.output_values:
-                    log_error(f'incorrect output_values (ov={output_values} != elem.ov={element.output_values})', symbol=f'{j}/{len(path)-1}')
+                    log_error(f'incorrect output_values (ov={new_values} != elem.ov={element.output_values})', symbol=f'{j}/{len(path)-1}')
                 assert output_event == element.output_event
                 assert new_values == element.output_values
 
