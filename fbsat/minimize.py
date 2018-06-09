@@ -5,6 +5,7 @@ import time
 import regex
 import shutil
 import tempfile
+import pickle
 import itertools
 import subprocess
 from io import StringIO
@@ -132,12 +133,20 @@ class Instance:
                     log_warn('Sorry, can\'t to find P :c')
                 log_br()
 
+        # =======================
+        efsm.pprint()
+        # =======================
+
         log_debug(f'Ps: {ps}')
         log_debug(f'Max P: {max(ps)}')
         log_debug(f'Sum P: {sum(ps)}')
         log_br()
 
         log_debug('Dumping minimized efsm...')
+        filename_automaton = f'{self.filename_prefix}_automaton_minimized'
+        with open(filename_automaton, 'wb') as f:
+            pickle.dump(efsm, f, pickle.HIGHEST_PROTOCOL)
+
         filename_gv = f'{self.filename_prefix}_C{C}_K{max(len(state.transitions) for state in efsm.states.values())}_efsm_minimized.gv'
         os.makedirs(os.path.dirname(filename_gv), exist_ok=True)
         efsm.write_gv(filename_gv)
@@ -146,5 +155,7 @@ class Instance:
         cmd = f'dot -T{output_format} {filename_gv} -O'
         log_debug(cmd, symbol='$')
         os.system(cmd)
+
+        efsm.verify(self.scenario_tree)
 
         log_br()
