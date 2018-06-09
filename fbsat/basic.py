@@ -59,11 +59,13 @@ class Instance:
         if self.best:
             efsm = self.build_efsm(self.best)
 
-            filename_automaton = f'{self.filename_prefix}_automaton'
+            # ===========
+            filename_automaton = f'{self.filename_prefix}_automaton_basic'
             with open(filename_automaton, 'wb') as f:
                 pickle.dump(efsm, f, pickle.HIGHEST_PROTOCOL)
+            # ===========
 
-            filename_gv = f'{self.filename_prefix}_C{self.best.C}{self.maybe_k(self.best.K)}_efsm.gv'
+            filename_gv = f'{self.filename_prefix}_C{self.best.C}{self.maybe_k(self.best.K)}_efsm_basic.gv'
             os.makedirs(os.path.dirname(filename_gv), exist_ok=True)
             efsm.write_gv(filename_gv)
 
@@ -428,7 +430,7 @@ class Instance:
                                 rhs.append(aux)
                         self.add_clause(-t, *rhs)
 
-        # 2.2. Self-loops
+        # 2.2. Loop-transitions
         for v in closed_range(2, V):
             for c in closed_range(1, C):
                 # IF toe[v]=0 THEN color[v,c] => transition[c,tie[v],tin[v],c]
@@ -445,19 +447,19 @@ class Instance:
 
         # 3.2. Algorithms definition
         for v in closed_range(2, V):
-            p = tree.parent[v]
-            for c in closed_range(1, C):
+            if tree.output_event[v] != 0:
                 for z in closed_range(1, Z):
-                    old = tree.output_value[p][z]
+                    old = tree.output_value[tree.parent[v]][z]  # may ask tpa, no difference
                     new = tree.output_value[v][z]
-                    if (old, new) == (False, False):
-                        self.add_clause(-color[v][c], -algorithm_0[c][z])
-                    elif (old, new) == (False, True):
-                        self.add_clause(-color[v][c], algorithm_0[c][z])
-                    elif (old, new) == (True, False):
-                        self.add_clause(-color[v][c], -algorithm_1[c][z])
-                    elif (old, new) == (True, True):
-                        self.add_clause(-color[v][c], algorithm_1[c][z])
+                    for c in closed_range(1, C):
+                        if (old, new) == (False, False):
+                            self.add_clause(-color[v][c], -algorithm_0[c][z])
+                        elif (old, new) == (False, True):
+                            self.add_clause(-color[v][c], algorithm_0[c][z])
+                        elif (old, new) == (True, False):
+                            self.add_clause(-color[v][c], -algorithm_1[c][z])
+                        elif (old, new) == (True, True):
+                            self.add_clause(-color[v][c], algorithm_1[c][z])
 
         log_debug(f'3. Clauses: {so_far()}', symbol='STAT')
 
@@ -474,11 +476,9 @@ class Instance:
         for v in closed_range(2, V):
             o = tree.output_event[v]
             for c in closed_range(1, C):
-                if o == 0:
-                    # IF toe[v]=0 THEN color[v,c] => output_event[c,toe[tpa[v]]]
+                if o == 0:  # IF toe[v]=0 THEN color[v,c] => output_event[c,toe[tpa[v]]]
                     self.add_clause(-color[v][c], output_event[c][tree.output_event[tree.previous_active[v]]])
-                else:
-                    # IF toe[v]!=0 THEN color[v,c] => output_event[c,toe[v]]
+                else:  # IF toe[v]!=0 THEN color[v,c] => output_event[c,toe[v]]
                     self.add_clause(-color[v][c], output_event[c][o])
 
         log_debug(f'4. Clauses: {so_far()}', symbol='STAT')
