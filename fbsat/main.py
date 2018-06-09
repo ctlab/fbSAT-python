@@ -98,6 +98,11 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
 
     filename_prefix += '_' + os.path.splitext(os.path.basename(filename_scenarios))[0]
 
+    # =================
+    with open(f'{filename_prefix}_scenario_tree', 'wb') as f:
+        pickle.dump(scenario_tree, f, pickle.HIGHEST_PROTOCOL)
+    # =================
+
     if strategy == 'basic':
         log_info('Basic strategy')
         config = dict(scenario_tree=scenario_tree,
@@ -112,7 +117,7 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
         InstanceBasic(**config).run()
     elif strategy == 'minimize':
         log_info('Minimize strategy')
-        with open(filename_prefix + '_automaton', 'rb') as f:
+        with open(filename_prefix + '_automaton_basic', 'rb') as f:
             efsm = pickle.load(f)
         config = dict(scenario_tree=scenario_tree,
                       efsm=efsm,
