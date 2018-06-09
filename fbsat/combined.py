@@ -4,15 +4,17 @@ import os
 import time
 import regex
 import shutil
+import pickle
 import tempfile
 import subprocess
 from io import StringIO
 from collections import deque, namedtuple
 
+from .efsm import *
 from .utils import *
 from .printers import *
 
-VARIABLES = 'color transition trans_event output_event algorithm_0 algorithm_1 nodetype terminal child_left child_right parent value child_value_left child_value_right fired_only not_fired'
+VARIABLES = 'color transition trans_event output_event algorithm_0 algorithm_1 nodetype terminal child_left child_right parent value child_value_left child_value_right first_fired not_fired'
 
 
 class Instance:
@@ -44,6 +46,7 @@ class Instance:
         self.write_strategy = write_strategy
         self.is_reuse = is_reuse
         self.stream = None
+        self.best = None
 
     def run(self):
         if self.P is None:
@@ -67,6 +70,7 @@ class Instance:
                         log_success(f'Solution with C={self.C}, K={self.K}, P={self.P} has N={assignment.N}')
                         log_br()
 
+                    self.best = assignment
                     break
             else:
                 log_warn(f'I\'m tired searching for P, are you sure it is SAT with given C and K (C={self.C}, K={self.K})?')
@@ -79,6 +83,7 @@ class Instance:
                 assignment = self.run_once()
                 if assignment:
                     log_success(f'Solution with C={self.C}, K={self.K}, P={self.P} has N={assignment.N}')
+                    self.best = assignment
                 else:
                     if self.N is None:
                         log_error(f'No solution with C={self.C}, K={self.K}, P={self.P}')
@@ -86,8 +91,25 @@ class Instance:
                         log_error(f'No solution with C={self.C}, K={self.K}, P={self.P}, N={self.N}')
                 log_br()
 
+        if self.best:
+            efsm = self.build_efsm(self.best)
+
+            filename_automaton = f'{self.filename_prefix}_automaton'
+            with open(filename_automaton, 'wb') as f:
+                pickle.dump(efsm, f, pickle.HIGHEST_PROTOCOL)
+
+            filename_gv = f'{self.filename_prefix}_C{self.best.C}_K{self.best.K}_P{self.best.P}_N{self.best.N}_efsm.gv'
+            os.makedirs(os.path.dirname(filename_gv), exist_ok=True)
+            efsm.write_gv(filename_gv)
+
+            output_format = 'svg'
+            cmd = f'dot -T{output_format} {filename_gv} -O'
+            log_debug(cmd, symbol='$')
+            os.system(cmd)
+
+            efsm.verify(self.scenario_tree)
+
     def run_minimize(self, *, _reuse_base=False):
-        self.best = None
         self.number_of_variables = 0
         self.number_of_clauses = 0
         if _reuse_base:
@@ -269,8 +291,8 @@ class Instance:
 
         # automaton variables
         color = self.declare_array(V, C)
-        transition = self.declare_array(C, K, C)
-        trans_event = self.declare_array(C, K, E)
+        transition = self.declare_array(C, K, C, with_zero=True)
+        trans_event = self.declare_array(C, K, E, with_zero=True)
         output_event = self.declare_array(C, O)
         algorithm_0 = self.declare_array(C, Z)
         algorithm_1 = self.declare_array(C, Z)
@@ -283,12 +305,13 @@ class Instance:
         value = self.declare_array(C, K, P, U)
         child_value_left = self.declare_array(C, K, P, U)
         child_value_right = self.declare_array(C, K, P, U)
-        fired_only = self.declare_array(C, K, U)
-        not_fired = self.declare_array(C, K, U)
+        first_fired = self.declare_array(C, U, K)
+        not_fired = self.declare_array(C, U, K)
         # bfs variables
-        bfs_transition = self.declare_array(C, C)
-        bfs_parent = self.declare_array(C, C)
-        # bfs_minsymbol = self.declare_array(K, C, C)
+        use_bfs = True
+        if use_bfs:
+            bfs_transition = self.declare_array(C, C)
+            bfs_parent = self.declare_array(C, C)
 
         # =-=-=-=-=-=-=
         #  CONSTRAINTS
@@ -348,6 +371,14 @@ class Instance:
         #   constraint color[1] = 1;
         self.add_clause(color[1][1])
 
+        # 1.2. Color definition
+        for v in closed_range(2, V):
+            for c in closed_range(1, C):
+                if tree.output_event[v] == 0:  # IF toe[v]=0 THEN color[v,c] <=> color[parent[v],c]
+                    iff(color[v][c], color[tree.parent[v]][c])
+                else:  # IF toe[v]!=0 THEN not (color[v,c] and color[parent[v],c])
+                    self.add_clause(-color[v][c], -color[tree.parent[v]][c])
+
         log_debug(f'1. Clauses: {so_far()}', symbol='STAT')
 
         # 2. Transition constraints
@@ -363,46 +394,44 @@ class Instance:
                 ALO(trans_event[c][k])
                 AMO(trans_event[c][k])
 
-        # 2.1. (transition + trans_event + fired_only definitions)
+        # 2.1. (transition + trans_event + first_fired definitions)
         #   constraint forall (v in 2..V where tree_output_event[v] != O+1) (
         #       exists (k in 1..K) (
         #           y[color[tree_previous_active[v]], k] = color[v]
         #           /\ w[color[tree_previous_active[v]], k] = tree_input_event[v]
-        #           /\ fired_only[color[tree_previous_active[v]], k, input_nums[v]]
+        #           /\ first_fired[color[tree_previous_active[v]], k, input_nums[v]]
         #       )
         #   );
         for v in closed_range(2, V):
-            pa = tree.previous_active[v]
-            o = tree.output_event[v]
-            if o == 0:
-                for c in closed_range(1, C):
-                    # (color[v]=c & color[pa]=c) => OR_k(y & w & fo)
-                    constraint = [-color[v][c], -color[pa][c]]
-                    for k in closed_range(1, K):
-                        # aux <-> y[c,k,c] /\ w[c,k,tie[v]] /\ fired_only[c,k,tin[v]]
-                        aux = self.new_variable()
-                        x1 = transition[c][k][c]
-                        x2 = trans_event[c][k][tree.input_event[v]]
-                        x3 = not_fired[c][k][tree.input_number[v]]
-                        iff_and(aux, (x1, x2, x3))
-                        constraint.append(aux)
-                    self.add_clause(*constraint)
-            else:
-                for cv in closed_range(1, C):
-                    for ctpa in closed_range(1, C):
-                        if cv == ctpa:
-                            continue
-                        # (color[v]=cv & color[pa]=ctpa) => OR_k(y & w & fo)
-                        constraint = [-color[v][cv], -color[pa][ctpa]]
+            p = tree.parent[v]
+            if tree.output_event[v] != 0:
+                for i in closed_range(1, C):  # p's color
+                    for j in closed_range(1, C):  # v's color
+                        # if i == j:  # FIXME: we could allow loops...
+                        #     continue
+                        # (color[v,j] & color[p,i]) => OR_k(y & w & ff)
+                        constraint = [-color[v][j], -color[p][i]]
                         for k in closed_range(1, K):
-                            # aux <-> y[ctpa,k,cv] /\ w[ctpa,k,tie[v]] /\ fired_only[ctpa,k,tin[v]]
+                            # aux <-> y[i,k,j] /\ w[i,k,tie[v]] /\ first_fired[i,tin[v],k]
                             aux = self.new_variable()
-                            x1 = transition[ctpa][k][cv]
-                            x2 = trans_event[ctpa][k][tree.input_event[v]]
-                            x3 = fired_only[ctpa][k][tree.input_number[v]]
+                            x1 = transition[i][k][j]
+                            x2 = trans_event[i][k][tree.input_event[v]]
+                            x3 = first_fired[i][tree.input_number[v]][k]
                             iff_and(aux, (x1, x2, x3))
                             constraint.append(aux)
                         self.add_clause(*constraint)
+
+        # for c in closed_range(1, C):
+        #     for k in closed_range(1, K):
+        #         self.add_clause(-transition[c][k][c])
+
+        for c in closed_range(1, C):
+            for k in closed_range(1, K - 1):
+                imply(transition[c][k][0], transition[c][k + 1][0])
+
+        for c in closed_range(1, C):
+            for k in closed_range(1, K):
+                iff(transition[c][k][0], trans_event[c][k][0])
 
         log_debug(f'2. Clauses: {so_far()}', symbol='STAT')
 
@@ -418,8 +447,8 @@ class Instance:
         # 3.2. Output event is the same as in the tree
         for v in closed_range(2, V):
             if tree.output_event[v] != 0:
-                for cv in closed_range(1, C):
-                    imply(color[v][cv], output_event[cv][tree.output_event[v]])
+                for c in closed_range(1, C):
+                    imply(color[v][c], output_event[c][tree.output_event[v]])
 
         log_debug(f'3. Clauses: {so_far()}', symbol='STAT')
 
@@ -429,76 +458,64 @@ class Instance:
             self.add_clause(-algorithm_0[1][z])
             self.add_clause(algorithm_1[1][z])
 
-        # 4.2. What to do with zero
+        # 4.2. Algorithms definition
         for v in closed_range(2, V):
             if tree.output_event[v] != 0:
                 for z in closed_range(1, Z):
-                    if not tree.unique_output[tree.output_number[tree.previous_active[v]]][z]:
-                        for cv in closed_range(1, C):
-                            if tree.unique_output[tree.output_number[v]][z]:
-                                imply(color[v][cv], algorithm_0[cv][z])
-                            else:
-                                imply(color[v][cv], -algorithm_0[cv][z])
-
-        # 4.3. What to do with one
-        for v in closed_range(2, V):
-            if tree.output_event[v] != 0:
-                for z in closed_range(1, Z):
-                    if tree.unique_output[tree.output_number[tree.previous_active[v]]][z]:
-                        for cv in closed_range(1, C):
-                            if tree.unique_output[tree.output_number[v]][z]:
-                                imply(color[v][cv], algorithm_1[cv][z])
-                            else:
-                                imply(color[v][cv], -algorithm_1[cv][z])
+                    old = tree.output_value[tree.parent[v]][z]  # parent/tpa, no difference
+                    new = tree.output_value[v][z]
+                    for c in closed_range(1, C):
+                        if (old, new) == (False, False):
+                            imply(color[v][c], -algorithm_0[c][z])
+                        elif (old, new) == (False, True):
+                            imply(color[v][c], algorithm_0[c][z])
+                        elif (old, new) == (True, False):
+                            imply(color[v][c], -algorithm_1[c][z])
+                        elif (old, new) == (True, True):
+                            imply(color[v][c], algorithm_1[c][z])
 
         log_debug(f'4. Clauses: {so_far()}', symbol='STAT')
 
         # 5. Firing constraints
+        # 5.0. AMO(first_fired)
+        for c in closed_range(1, C):
+            for u in closed_range(1, U):
+                AMO(first_fired[c][u])
+
         # 5.1. (not_fired definition)
-        #   constraint forall (v in 2..V, ctpa in 1..C where tree_output_event[v] == O+1) (
-        #       ctpa = color[tree_previous_active[v]] ->
-        #           not_fired[ctpa, K, input_nums[v]]
-        #   );
         for v in closed_range(2, V):
             if tree.output_event[v] == 0:
-                for ctpa in closed_range(1, C):
-                    imply(color[tree.previous_active[v]][ctpa],
-                          not_fired[ctpa][K][tree.input_number[v]])
+                for c in closed_range(1, C):
+                    imply(color[v][c],  # passive: color[v] == color[parent[v]] == color[tpa[v]]
+                          not_fired[c][tree.input_number[v]][K])
 
         # 5.2. not fired
-        #   // part a
-        #   constraint forall (c in 1..C, g in 1..U) (
-        #       not_fired[c, 1, g] <->
-        #           not value[c, 1, 1, g]
-        #   );
-        #   // part b
-        #   constraint forall (c in 1..C, k in 2..K, g in 1..U) (
-        #       not_fired[c, k, g] <->
-        #           not value[c, k, 1, g]
-        #           /\ not_fired[c, k-1, g]
-        #   );
         for c in closed_range(1, C):
             for u in closed_range(1, U):
-                iff(not_fired[c][1][u], -value[c][1][1][u])
                 for k in closed_range(2, K):
-                    iff_and(not_fired[c][k][u],
-                            (-value[c][k][1][u], not_fired[c][k - 1][u]))
+                    imply(not_fired[c][u][k], not_fired[c][u][k - 1])
+                for k in closed_range(1, K - 1):
+                    imply(-not_fired[c][u][k], -not_fired[c][u][k + 1])
 
-        # 5.3. fired_only
-        #   // part a
-        #   constraint forall (c in 1..C, g in 1..U) (
-        #       fired_only[c, 1, g] <-> value[c, 1, 1, g]
-        #   );
-        #   // part b
-        #   constraint forall (c in 1..C, k in 2..K, g in 1..U) (
-        #       fired_only[c, k, g] <-> value[c, k, 1, g] /\ not_fired[c, k-1, g]
-        #   );
+        # 5.3. first_fired
         for c in closed_range(1, C):
             for u in closed_range(1, U):
-                iff(fired_only[c][1][u], value[c][1][1][u])
+                for k in closed_range(1, K):
+                    # ~(ff & nf)
+                    self.add_clause(-first_fired[c][u][k], -not_fired[c][u][k])
                 for k in closed_range(2, K):
-                    iff_and(fired_only[c][k][u],
-                            (value[c][k][1][u], not_fired[c][k - 1][u]))
+                    # ff_k => nf_{k-1}
+                    imply(first_fired[c][u][k], not_fired[c][u][k - 1])
+
+        # 5.4. Value from fired
+        for c in closed_range(1, C):
+            for u in closed_range(1, U):
+                for k in closed_range(1, K):
+                    # nf => ~value
+                    imply(not_fired[c][u][k], -value[c][k][1][u])
+                    # ff => value
+                    imply(first_fired[c][u][k], value[c][k][1][u])
+                    # else => unconstrained
 
         log_debug(f'5. Clauses: {so_far()}', symbol='STAT')
 
@@ -789,70 +806,57 @@ class Instance:
 
         log_debug(f'11. Clauses: {so_far()}', symbol='STAT')
 
-        # 12. BFS constraints
-        # 12.1. F_t
-        for i in closed_range(1, C):
-            for j in closed_range(1, C):
-                if i == j:
-                    continue
-                # t_ij <=> OR_k(transition_ikj)
-                iff_or(bfs_transition[i][j],
-                       [transition[i][k][j] for k in closed_range(1, K)])
-            self.add_clause(-bfs_transition[i][i])
+        if use_bfs:
+            # 12. BFS constraints
+            # 12.1. F_t
+            for i in closed_range(1, C):
+                for j in closed_range(1, C):
+                    if i == j:
+                        continue
+                    # t_ij <=> OR_k(transition_ikj)
+                    iff_or(bfs_transition[i][j],
+                           [transition[i][k][j] for k in closed_range(1, K)])
+                self.add_clause(-bfs_transition[i][i])
 
-        # 12.2. F_p
-        for i in closed_range(1, C):
-            for j in closed_range(1, i):
-                self.add_clause(-bfs_parent[j][i])
-            for j in closed_range(i + 1, C):
-                # p_ji <=> t_ij & AND_[k<i](~t_kj)
-                iff_and(bfs_parent[j][i],
-                        [bfs_transition[i][j]] +
-                        [-bfs_transition[k][j] for k in closed_range(1, i - 1)])
+            # 12.2. F_p
+            for i in closed_range(1, C):
+                for j in closed_range(1, i):
+                    self.add_clause(-bfs_parent[j][i])
+                for j in closed_range(i + 1, C):
+                    # p_ji <=> t_ij & AND_[k<i](~t_kj)
+                    iff_and(bfs_parent[j][i],
+                            [bfs_transition[i][j]] +
+                            [-bfs_transition[k][j] for k in closed_range(1, i - 1)])
 
-        # 12.3. F_ALO(p)
-        for j in closed_range(2, C):
-            self.add_clause(*[bfs_parent[j][i] for i in closed_range(1, j - 1)])
+            # 12.3. F_ALO(p)
+            for j in closed_range(2, C):
+                self.add_clause(*[bfs_parent[j][i] for i in closed_range(1, j - 1)])
 
-        # 12.4. F_BFS(p)
-        for k in closed_range(1, C):
-            for i in closed_range(k + 1, C):
-                for j in closed_range(i + 1, C - 1):
-                    # p_ji => ~p_{j+1,k}
-                    imply(bfs_parent[j][i], -bfs_parent[j + 1][k])
+            # 12.4. F_BFS(p)
+            for k in closed_range(1, C):
+                for i in closed_range(k + 1, C):
+                    for j in closed_range(i + 1, C - 1):
+                        # p_ji => ~p_{j+1,k}
+                        imply(bfs_parent[j][i], -bfs_parent[j + 1][k])
 
-        log_debug(f'12. Clauses: {so_far()}', symbol='STAT')
+            log_debug(f'12. Clauses: {so_far()}', symbol='STAT')
 
         # Declare any ad-hoc you like
         # AD-HOCs
 
         # adhoc-1
-        #   constraint forall (c in 1..C, k in 1..K) (
-        #       y[c, k] = C+1 <->
-        #           nodetype[c, k, 1] = 4
-        #   );
         for c in closed_range(1, C):
             for k in closed_range(1, K):
-                iff(transition[c][k][c], nodetype[c][k][1][4])
+                iff(transition[c][k][0], nodetype[c][k][1][4])
 
         # adhoc-2
-        #   constraint forall (c in 1..C, k in 1..K-1) (
-        #       y[c, k] = C+1 ->
-        #           y[c, k+1] = C+1
-        #   );
-        for c in closed_range(1, C):
-            for k in closed_range(1, K - 1):
-                imply(transition[c][k][c], transition[c][k + 1][c])
-
-        # adhoc-4
-        #   constraint forall (c in 1..C, k in 1..K, g in 1..U) (
-        #       fired_only[c, k, g] ->
-        #           nodetype[c, k, 1] != 4
-        #   );
         for c in closed_range(1, C):
             for k in closed_range(1, K):
                 for u in closed_range(1, U):
-                    imply(fired_only[c][k][u], -nodetype[c][k][1][4])
+                    # (t!=0 & nf) => nodetype[1]!=4
+                    self.add_clause(transition[c][k][0], -not_fired[c][u][k], -nodetype[c][k][1][4])
+                    # ff => nodetype[1]!=4
+                    imply(first_fired[c][u][k], -nodetype[c][k][1][4])
 
         log_debug(f'A. Clauses: {so_far()}', symbol='STAT')
 
@@ -876,7 +880,7 @@ class Instance:
             value=value,
             child_value_left=child_value_left,
             child_value_right=child_value_right,
-            fired_only=fired_only,
+            first_fired=first_fired,
             not_fired=not_fired,
             totalizer=None
         )
@@ -1079,7 +1083,7 @@ class Instance:
             value=wrapper_bool(self.reduction.value),
             child_value_left=wrapper_bool(self.reduction.child_value_left),
             child_value_right=wrapper_bool(self.reduction.child_value_right),
-            fired_only=wrapper_bool(self.reduction.fired_only),
+            first_fired=wrapper_bool(self.reduction.first_fired),
             not_fired=wrapper_bool(self.reduction.not_fired),
             C=self.C,
             K=self.K,
@@ -1147,3 +1151,47 @@ class Instance:
         #     for fn in self.get_filenames():
         #         with open(fn) as f:
         #             shutil.copyfileobj(f, merged)
+
+    def build_efsm(self, assignment):
+        log_debug('Building EFSM...')
+        time_start_build = time.time()
+
+        tree = self.scenario_tree
+        C = assignment.C
+        K = assignment.K
+        # P = assignment.P
+        # N = assignment.N
+        input_events = tree.input_events
+        output_events = tree.output_events
+
+        efsm = EFSM()
+        for c in closed_range(1, C):
+            efsm.add_state(c,
+                           output_events[assignment.output_event[c] - 1],
+                           assignment.algorithm_0[c],
+                           assignment.algorithm_1[c])
+        efsm.initial_state = 1
+
+        for c in closed_range(1, C):
+            for k in closed_range(1, K):
+                dest = assignment.transition[c][k]
+                if dest != 0:
+                    input_event = input_events[assignment.trans_event[c][k] - 1]
+                    guard = Guard(assignment.nodetype[c][k],
+                                  assignment.terminal[c][k],
+                                  assignment.parent[c][k],
+                                  assignment.child_left[c][k],
+                                  assignment.child_right[c][k])
+                    efsm.add_transition(c, dest, input_event, guard)
+                else:
+                    log_debug(f'state {c} has no {k}-th transition')
+
+        # =======================
+        efsm.pprint()
+        # =======================
+
+        if efsm.number_of_nodes != assignment.N:
+            log_error(f'Inequal number of nodes: efsm has {efsm.number_of_nodes}, assignment has {assignment.N}')
+
+        log_debug(f'Done building EFSM with {efsm.number_of_states} states, {efsm.number_of_transitions} transitions and {efsm.number_of_nodes} nodes in {time.time() - time_start_build:.2f} s')
+        return efsm
