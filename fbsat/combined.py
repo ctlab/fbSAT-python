@@ -66,17 +66,17 @@ class Instance:
                 self.is_incremental = _is_inc
 
                 if assignment:
+                    self.best = assignment
                     log_success(f'Found P = {P}')
                     log_br()
 
                     if self.is_minimize:
-                        self.run_minimize(_reuse_base=True)
+                        self.run_minimize(_reuse_base=True)  # overrides self.best
                     else:
                         # Reuse assignment found above
                         log_success(f'Solution with C={self.C}, K={self.K}, P={self.P} has N={assignment.N}')
                         log_br()
 
-                    self.best = assignment
                     break
             else:
                 log_warn(f'I\'m tired searching for P, are you sure it is SAT with given C and K (C={self.C}, K={self.K})?')
@@ -1119,7 +1119,7 @@ class Instance:
                   for p in closed_range(1, self.P)),
         )
 
-        log_debug(f'Done building assignment in {time.time() - time_start_assignment:.2f} s')
+        log_debug(f'Done building assignment (N={assignment.N}) in {time.time() - time_start_assignment:.2f} s')
         return assignment
 
     def maybe_n(self):
