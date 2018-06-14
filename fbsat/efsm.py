@@ -103,7 +103,6 @@ class Guard:
         # input_values :: [1..X]:Bool
         self = cls.__new__(cls)
         X = len(input_values) - 1
-        assert X == 10
 
         left = self.Node(0, 1)
         if not input_values[1]:
