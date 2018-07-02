@@ -65,7 +65,7 @@ CONTEXT_SETTINGS = dict(
               default='minizinc --fzn-cmd fzn-gecode', show_default=True,
               # default='mzn-fzn --solver fz', show_default=True,
               help='Minizinc solver')
-@click.option('--write-strategy', type=click.Choice(['direct', 'tempfile', 'StringIO']),
+@click.option('--write-strategy', type=click.Choice(['direct', 'tempfile', 'StringIO', 'pysat']),
               default='StringIO', show_default=True,
               help='Which file-write strategy to use')
 @click.version_option(__version__)

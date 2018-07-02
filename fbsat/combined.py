@@ -23,7 +23,7 @@ class Instance:
     Assignment = namedtuple('Assignment', VARIABLES + ' C K P N')
 
     def __init__(self, *, scenario_tree, C, K, P=None, N=0, is_minimize=False, is_incremental=False, sat_solver, sat_isolver=None, filename_prefix='', write_strategy='StringIO', is_reuse=False):
-        assert write_strategy in ('direct', 'tempfile', 'StringIO')
+        assert write_strategy in ('direct', 'tempfile', 'StringIO', 'pysat')
 
         if is_incremental:
             assert sat_isolver is not None, "You need to specify incremental SAT solver using `--sat-isolver` option"
@@ -47,6 +47,12 @@ class Instance:
         self.is_reuse = is_reuse
         self.stream = None
         self.best = None
+
+        self.is_pysat = self.write_strategy == 'pysat'
+        if self.is_pysat:
+            from pysat.solvers import Glucose4
+            self.oracle = Glucose4()
+            self.N_defined = None
 
     def run(self):
         if self.P is None:
@@ -206,6 +212,8 @@ class Instance:
             self.stream = tempfile.NamedTemporaryFile('w', delete=False)
         elif self.write_strategy == 'StringIO':
             self.stream = StringIO()
+        elif self.is_pysat:
+            self.stream = None
 
     def maybe_close_stream(self, filename):
         if self.stream is not None:
@@ -235,6 +243,8 @@ class Instance:
         self.number_of_clauses += 1
         if self.stream is not None:
             self.stream.write(' '.join(map(str, vs)) + ' 0\n')
+        elif self.is_pysat:
+            self.oracle.add_clause(vs)
 
     def declare_array(self, *dims, with_zero=False):
         def last():
@@ -959,11 +969,17 @@ class Instance:
         filename = self.get_filename_comparator()
         self.maybe_new_stream(filename)
 
-        N_max = self.C * self.K * self.P
+        if self.is_pysat and self.N_defined is not None:
+            N_max = self.N_defined
+        else:
+            N_max = self.C * self.K * self.P
 
         # sum(E) <= N   <=>   sum(E) < N + 1
         for n in reversed(closed_range(self.N + 1, N_max)):
             self.add_clause(-self.reduction.totalizer[n - 1])  # Note: totalizer is 0-based!
+
+        if self.is_pysat:
+            self.N_defined = self.N
 
         self.maybe_close_stream(filename)
 
@@ -995,7 +1011,16 @@ class Instance:
         log_info('Solving...')
         time_start_solve = time.time()
 
-        if self.is_incremental:
+        if self.is_pysat:
+            is_sat = self.oracle.solve()
+
+            if is_sat:
+                log_success(f'SAT in {time.time() - time_start_solve:.2f} s')
+                raw_assignment = [None] + self.oracle.get_model()
+                return self.parse_raw_assignment(raw_assignment)
+            else:
+                log_error(f'UNSAT in {time.time() - time_start_solve:.2f} s')
+        elif self.is_incremental:
             p = self.isolver_process
             p.stdin.write('solve 0\n')  # TODO: pass timeout?
             p.stdin.flush()
