@@ -50,8 +50,8 @@ class Instance:
 
         self.is_pysat = self.write_strategy == 'pysat'
         if self.is_pysat:
-            from pysat.solvers import Glucose4
-            self.oracle = Glucose4()
+            from pysat.solvers import Minisat22 as Solver
+            self.oracle = Solver()
             self.N_defined = None
 
     def run(self):
