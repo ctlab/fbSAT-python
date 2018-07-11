@@ -68,8 +68,9 @@ CONTEXT_SETTINGS = dict(
 @click.option('--write-strategy', type=click.Choice(['direct', 'tempfile', 'StringIO', 'pysat']),
               default='StringIO', show_default=True,
               help='Which file-write strategy to use')
+@click.option('--automaton', help='File with pickled automaton')
 @click.version_option(__version__)
-def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_variable_names, filename_prefix, C, K, P, N, Cmax, is_minimize, is_incremental, is_reuse, sat_solver, sat_isolver, mzn_solver, write_strategy):
+def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_variable_names, filename_prefix, C, K, P, N, Cmax, is_minimize, is_incremental, is_reuse, sat_solver, sat_isolver, mzn_solver, write_strategy, automaton):
     if strategy == 'basic':
         if is_incremental and sat_isolver is None:
             raise click.BadParameter('missing incremental solver', param_hint='sat_isolver')
@@ -117,7 +118,11 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
         InstanceBasic(**config).run()
     elif strategy == 'minimize':
         log_info('Minimize strategy')
-        with open(filename_prefix + '_automaton_basic', 'rb') as f:
+        if automaton:
+            filename_automaton = automaton
+        else:
+            filename_automaton = filename_prefix + '_automaton_basic'
+        with open(filename_automaton, 'rb') as f:
             efsm = pickle.load(f)
         config = dict(scenario_tree=scenario_tree,
                       efsm=efsm,
