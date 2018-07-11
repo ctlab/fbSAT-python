@@ -73,7 +73,7 @@ class Instance:
                 log_info(f'Solving state {c}/{C}, transition {k}/{K}')
                 for P in itertools.islice(itertools.count(1), 10):
                     log_info(f'Trying P = {P}')
-                    filename = f'{self.filename_prefix}_C{C}_c{c}_K{K}_k{k}_P{P}.mzn'
+                    filename = f'{self.filename_prefix}_C{C}_c{c}_K{K}_k{k}_P{P}.dzn'
                     with open(filename, 'w') as f:
                         f.write(f'% C = {C};\n')
                         f.write(f'% c = {c};\n')
