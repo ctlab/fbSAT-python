@@ -13,6 +13,9 @@ class Guard:
 
     class Node:
 
+        predicate_names = 'c1Home c1End c2Home c2End vcHome vcEnd pp1 pp2 pp3 vac'.split()
+        output_variable_names = 'c1Extend c1Retract c2Extend c2Retract vcExtend vacuum_on vacuum_off'.split()
+
         def __init__(self, nodetype, terminal):
             assert 0 <= nodetype <= 4
             self.nodetype = nodetype
