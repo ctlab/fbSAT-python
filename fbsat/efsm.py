@@ -1,6 +1,5 @@
-__all__ = ('Guard', 'EFSM')
-
 import time
+from abc import ABC, abstractmethod
 from collections import OrderedDict
 
 from lxml import etree
@@ -8,8 +7,44 @@ from lxml import etree
 from .utils import *
 from .printers import *
 
+__all__ = ['FullGuard', 'ParseTreeGuard', 'TruthTableGuard', 'EFSM']
 
-class Guard:
+
+class Guard(ABC):
+    @abstractmethod
+    def eval(self, input_values):
+        # input_values :: [1..X]:Bool
+        pass
+
+
+class FullGuard(Guard):
+    def __init__(self, input_values):
+        self.input_values = input_values  # [1..X]:Bool
+
+    def eval(self, input_values):
+        # input_values :: [1..X]:Bool
+        return self.input_values[1:] == input_values[1:]
+
+    def __str__(self):
+        return b2s(self.input_values[1:])
+
+
+class TruthTableGuard(Guard):
+    def __init__(self, truth_table, unique_inputs):
+        self.truth_table = truth_table  # str from {'01x'} of length U
+        self.unique_inputs = unique_inputs  # [input_values::str] of length U
+
+    def eval(self, input_values):
+        # input_values :: [1..X]:Bool
+        s = b2s(input_values[1:])
+        return self.truth_table[self.unique_inputs.index(s)] in '1x'
+
+    def __str__(self):
+        # return f'[{self.truth_table}]'
+        return f'[...]'
+
+
+class ParseTreeGuard(Guard):
 
     class Node:
 
@@ -23,7 +58,7 @@ class Guard:
             self.parent = self.child_left = self.child_right = None
 
         def eval(self, input_values):
-            # input_values :: [bool] :: 1-based
+            # input_values :: [1..X]:Bool
             if self.nodetype == 0:  # Terminal
                 assert self.terminal != 0
                 return input_values[self.terminal]
@@ -61,11 +96,22 @@ class Guard:
             if self.nodetype == 0:  # Terminal
                 return self.predicate_names[self.terminal - 1]
             elif self.nodetype == 1:  # AND
-                return f'({self.child_left} & {self.child_right})'
+                left = str(self.child_left)
+                right = str(self.child_right)
+                if self.child_left.nodetype == 2:  # Left child is OR
+                    left = f'({left})'
+                if self.child_right.nodetype == 2:  # Right child is OR
+                    right = f'({right})'
+                return f'{left} & {right}'
             elif self.nodetype == 2:  # OR
-                return f'({self.child_left} | {self.child_right})'
+                left = str(self.child_left)
+                right = str(self.child_right)
+                if self.child_left.nodetype == 1:  # Left child is AND
+                    left = f'({left})'
+                if self.child_right.nodetype == 1:  # Right child is AND
+                    right = f'({right})'
+                return f'{left} | {right}'
             elif self.nodetype == 3:  # NOT
-                # FIXME: why do we need this dispatch? Seems like first branch is enough
                 if self.child_left.nodetype == 0:
                     return f'~{self.child_left}'
                 else:
@@ -77,6 +123,22 @@ class Guard:
             if self.nodetype == 0:  # Terminal
                 return str(self)
             elif self.nodetype == 1:  # AND
+                left = self.child_left.__str_nice__()
+                right = self.child_right.__str_nice__()
+                if self.child_left.nodetype == 2:  # Left child is OR
+                    left = f'({left})'
+                if self.child_right.nodetype == 2:  # Right child is OR
+                    right = f'({right})'
+                return f'{left} AND {right}'
+            elif self.nodetype == 2:  # OR
+                left = self.child_left.__str_nice__()
+                right = self.child_right.__str_nice__()
+                if self.child_left.nodetype == 1:  # Left child is AND
+                    left = f'({left})'
+                if self.child_right.nodetype == 1:  # Right child is AND
+                    right = f'({right})'
+                return f'{left} OR {right}'
+            elif self.nodetype == 1:  # AND
                 return f'({self.child_left.__str_nice__()} AND {self.child_right.__str_nice__()})'
             elif self.nodetype == 2:  # OR
                 return f'({self.child_left.__str_nice__()} OR {self.child_right.__str_nice__()})'
@@ -86,6 +148,7 @@ class Guard:
                 raise ValueError(f'why are you trying to display None-typed node?')
 
     def __init__(self, nodetype, terminal, parent, child_left, child_right):
+        # Note: all arguments are 1-based
         assert len(nodetype) == len(terminal) == len(parent) == len(child_left) == len(child_right)
         P = len(nodetype) - 1
 
@@ -97,36 +160,6 @@ class Guard:
             nodes[p].child_right = nodes[child_right[p]]
 
         self.root = nodes[1]
-
-    @classmethod
-    def from_input(cls, input_values):
-        # input_values :: [1..X]:Bool
-        self = cls.__new__(cls)
-        X = len(input_values) - 1
-
-        left = self.Node(0, 1)
-        if not input_values[1]:
-            negation = self.Node(3, 0)
-            negation.child_left = left
-            left.parent = negation
-            left = negation
-
-        for x in closed_range(2, X):
-            right = self.Node(0, x)
-            if not input_values[x]:
-                negation = self.Node(3, 0)
-                negation.child_left = right
-                right.parent = negation
-                right = negation
-            new_root = self.Node(1, 0)
-            new_root.child_left = left
-            new_root.child_right = right
-            left.parent = new_root
-            right.parent = new_root
-            left = new_root
-
-        self.root = left
-        return self
 
     def eval(self, input_values):
         # input_values :: [1..X]:Bool
@@ -156,12 +189,11 @@ class EFSM:
 
             def eval(self, input_values):
                 # input_values :: str of length X
-                return self.guard.eval([None] + [{'0': False, '1': True}[v]
-                                                 for v in input_values])
+                return self.guard.eval(s2b(input_values))
 
             def __str__(self):
                 # Example: 2->3 on REQ if (x1 & x2)
-                return f'{self.source.id}→{self.destination.id} on {self.input_event} if {self.guard}'
+                return f'{self.source.id} to {self.destination.id} on {self.input_event} if {self.guard}'
 
         def __init__(self, id, output_event, algorithm_0, algorithm_1):
             self.id = id
@@ -197,11 +229,115 @@ class EFSM:
             return f'{self.id}/{self.output_event}(0:{self.algorithm_0}, 1:{self.algorithm_1})'
 
         def __repr__(self):
-            return f'State(id={self.id}, output_event={self.output_event}, algorithm_0={self.algorithm_0}, algorithm_1={self.algorithm_1})'
+            return f'State(id={self.id!r}, output_event={self.output_event!r}, algorithm_0={self.algorithm_0!r}, algorithm_1={self.algorithm_1!r})'
 
     def __init__(self):
         self.states = OrderedDict()
         self.initial_state = None
+
+    @classmethod
+    def new_with_truth_tables(cls, scenario_tree, assignment):
+        log_debug('Building EFSM with truth tables...')
+        time_start_build = time.time()
+
+        tree = scenario_tree
+        C = assignment.C
+        K = assignment.K
+        E = tree.E
+        U = tree.U
+        input_events = tree.input_events    # [str]^E  0-based
+        output_events = tree.output_events  # [str]^O  0-based
+        unique_inputs = tree.unique_inputs  # [str]^U  0-based
+
+        efsm = cls()
+        for c in closed_range(1, C):
+            efsm.add_state(c,
+                           output_events[assignment.output_event[c] - 1],
+                           assignment.algorithm_0[c],
+                           assignment.algorithm_1[c])
+        efsm.initial_state = 1
+
+        for c in closed_range(1, C):
+            for e in closed_range(1, E):
+                for k in closed_range(1, K):
+                    dest = assignment.transition[c][e][k]
+                    if dest != 0:
+                        input_event = input_events[e - 1]
+                        truth_table = ''
+                        for u in closed_range(1, U):
+                            if assignment.not_fired[c][e][u][k]:
+                                truth_table += '0'
+                            elif assignment.first_fired[c][e][u][k]:
+                                truth_table += '1'
+                            else:
+                                truth_table += 'x'
+                        guard = TruthTableGuard(truth_table, unique_inputs)
+                        efsm.add_transition(c, dest, input_event, guard)
+
+        if efsm.number_of_states != assignment.C:
+            log_error(f'Inequal number of states: efsm has {efsm.number_of_states}, assignment has {assignment.C}')
+        if efsm.number_of_transitions != assignment.T:
+            log_error(f'Inequal number of nodes: efsm has {efsm.number_of_transitions}, assignment has {assignment.T}')
+
+        log_debug(f'Done building EFSM with {efsm.number_of_states} states and {efsm.number_of_transitions} transitions in {time.time() - time_start_build:.2f} s')
+        return efsm
+
+    @classmethod
+    def new_with_parse_trees(cls, scenario_tree, assignment):
+        log_debug('Building EFSM...')
+        time_start_build = time.time()
+
+        tree = scenario_tree
+        C = assignment.C
+        K = assignment.K
+        E = tree.E
+        input_events = tree.input_events    # [str]^E  0-based
+        output_events = tree.output_events  # [str]^O  0-based
+
+        efsm = cls()
+        for c in closed_range(1, C):
+            efsm.add_state(c,
+                           output_events[assignment.output_event[c] - 1],
+                           assignment.algorithm_0[c],
+                           assignment.algorithm_1[c])
+        efsm.initial_state = 1
+
+        for c in closed_range(1, C):
+            for e in closed_range(1, E):
+                for k in closed_range(1, K):
+                    dest = assignment.transition[c][e][k]
+                    if dest != 0:
+                        input_event = input_events[e - 1]
+                        guard = ParseTreeGuard(assignment.nodetype[c][e][k],
+                                               assignment.terminal[c][e][k],
+                                               assignment.parent[c][e][k],
+                                               assignment.child_left[c][e][k],
+                                               assignment.child_right[c][e][k])
+                        efsm.add_transition(c, dest, input_event, guard)
+
+        if efsm.number_of_states != assignment.C:
+            log_error(f'Inequal number of states: efsm has {efsm.number_of_states}, assignment has {assignment.C}')
+        if efsm.number_of_transitions != assignment.T:
+            log_error(f'Inequal number of nodes: efsm has {efsm.number_of_transitions}, assignment has {assignment.T}')
+        if efsm.number_of_nodes != assignment.N:
+            log_error(f'Inequal number of nodes: efsm has {efsm.number_of_nodes}, assignment has {assignment.N}')
+
+        log_debug(f'Done building EFSM with {efsm.number_of_states} states, {efsm.number_of_transitions} transitions and {efsm.number_of_nodes} nodes in {time.time() - time_start_build:.2f} s')
+        return efsm
+
+    @property
+    def initial_state(self):
+        if self._initial_state:
+            return self._initial_state
+        else:
+            if self.states:
+                return next(iter(self.states.keys()))
+            else:
+                return None
+
+    @initial_state.setter
+    def initial_state(self, value):
+        self._initial_state = value
 
     @property
     def number_of_states(self):
@@ -243,14 +379,15 @@ class EFSM:
     def get_gv_string(self):
         state_numbers = {state: i for i, state in enumerate(self.states.values())}
         lines = ['digraph {',
+                 # '    rankdir=LR;'
                  '    // States',
                  '    { node []',
-                 *(f'      {state_numbers[state]} [label="{state.id}: {state.output_event}({state.algorithm_0}_{state.algorithm_1})"]'
+                 *(f'      {state_numbers[state]} [label="{state.id}:{state.output_event}({state.algorithm_0}_{state.algorithm_1})"];'
                    for state in self.states.values()),
                  '    }',
                  '    // Transitions',
-                 *(f'    {state_numbers[transition.source]} -> {state_numbers[transition.destination]} [label="{transition.input_event} [{transition.guard}]"]'
-                     for state in self.states.values() for transition in state.transitions),
+                 *(f'    {state_numbers[transition.source]} -> {state_numbers[transition.destination]} [label="{k}:{transition.input_event}/{transition.guard}"];'
+                     for state in self.states.values() for k, transition in enumerate(state.transitions, start=1)),
                  '}']
         return '\n'.join(lines)
 
@@ -357,4 +494,3 @@ class EFSM:
                 current_values = new_values
 
         log_success(f'Done verifying in {time.time() - time_start_verify:.2f} s')
-        log_br()

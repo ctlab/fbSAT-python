@@ -14,7 +14,7 @@ from .printers import *
 
 __all__ = ['Instance']
 
-VARIABLES = 'color transition trans_event output_event algorithm_0 algorithm_1 nodetype terminal child_left child_right parent value child_value_left child_value_right first_fired not_fired'
+VARIABLES = 'color transition trans_event output_event algorithm_0 algorithm_1 root_isnone root_value first_fired not_fired'
 
 
 class Instance:
@@ -100,11 +100,11 @@ class Instance:
         if self.best:
             efsm = self.build_efsm(self.best)
 
-            filename_automaton = f'{self.filename_prefix}_automaton'
+            filename_automaton = f'{self.filename_prefix}_TEST_automaton'
             with open(filename_automaton, 'wb') as f:
                 pickle.dump(efsm, f, pickle.HIGHEST_PROTOCOL)
 
-            filename_gv = f'{self.filename_prefix}_C{self.best.C}_K{self.best.K}_P{self.best.P}_N{self.best.N}_efsm.gv'
+            filename_gv = f'{self.filename_prefix}_C{self.best.C}_K{self.best.K}_P{self.best.P}_N{self.best.N}_TEST_efsm.gv'
             os.makedirs(os.path.dirname(filename_gv), exist_ok=True)
             efsm.write_gv(filename_gv)
 
@@ -113,7 +113,7 @@ class Instance:
             log_debug(cmd, symbol='$')
             os.system(cmd)
 
-            efsm.verify(self.scenario_tree)
+            # efsm.verify(self.scenario_tree)
 
     def run_minimize(self, *, _reuse_base=False):
         self.number_of_variables = 0
@@ -307,14 +307,16 @@ class Instance:
         algorithm_0 = self.declare_array(C, Z)
         algorithm_1 = self.declare_array(C, Z)
         # guards variables
-        nodetype = self.declare_array(C, K, P, 4, with_zero=True)
-        terminal = self.declare_array(C, K, P, X, with_zero=True)
-        child_left = self.declare_array(C, K, P, P, with_zero=True)
-        child_right = self.declare_array(C, K, P, P, with_zero=True)
-        parent = self.declare_array(C, K, P, P, with_zero=True)
-        value = self.declare_array(C, K, P, U)
-        child_value_left = self.declare_array(C, K, P, U)
-        child_value_right = self.declare_array(C, K, P, U)
+        # nodetype = self.declare_array(C, K, P, 4, with_zero=True)
+        # terminal = self.declare_array(C, K, P, X, with_zero=True)
+        # child_left = self.declare_array(C, K, P, P, with_zero=True)
+        # child_right = self.declare_array(C, K, P, P, with_zero=True)
+        # parent = self.declare_array(C, K, P, P, with_zero=True)
+        # value = self.declare_array(C, K, P, U)
+        # child_value_left = self.declare_array(C, K, P, U)
+        # child_value_right = self.declare_array(C, K, P, U)
+        root_isnone = self.declare_array(C, K)
+        root_value = self.declare_array(C, K, U)
         first_fired = self.declare_array(C, U, K)
         not_fired = self.declare_array(C, U, K)
         # bfs variables
@@ -420,7 +422,7 @@ class Instance:
                         # if i == j:  # FIXME: we could allow loops...
                         #     continue
                         # (color[v,j] & color[p,i]) => OR_k(y & w & ff)
-                        constraint = [-color[v][j], -color[p][i]]
+                        rhs = []
                         for k in closed_range(1, K):
                             # aux <-> y[i,k,j] /\ w[i,k,tie[v]] /\ first_fired[i,tin[v],k]
                             aux = self.new_variable()
@@ -428,12 +430,48 @@ class Instance:
                             x2 = trans_event[i][k][tree.input_event[v]]
                             x3 = first_fired[i][tree.input_number[v]][k]
                             iff_and(aux, (x1, x2, x3))
-                            constraint.append(aux)
-                        self.add_clause(*constraint)
+                            rhs.append(aux)
+                        self.add_clause(-color[v][j], -color[p][i], *rhs)
+            # else:
+            #     for i in closed_range(1, C):  # p's color
+            #         for j in closed_range(1, C):  # v's color
+            #             # (color[v,j] & color[p,i]) => AND_k(~y_ikj)
+            #             rhs = []
+            #             for k in closed_range(1, K):
+            #                 rhs.append(-transition[i][k][j])
+            #             self.add_clause(-color[v][j], -color[p][i], *rhs)
 
-        # for c in closed_range(1, C):
-        #     for k in closed_range(1, K):
-        #         self.add_clause(-transition[c][k][c])
+        for i in closed_range(1, C):  # p's color
+            for k in closed_range(1, K):
+                for j in closed_range(1, C):  # v's color
+                    # for e in closed_range(1, E):
+                    #     for u in closed_range(1, U):
+                    #         # (y & w & ff) -> OR_{v|...}( color[parent[v],i] & color[v,j] )
+                    #         rhs = []
+                    #         for v in closed_range(2, V):
+                    #             if tree.input_event[v] == e and tree.input_number[v] == u and tree.output_event[v] != 0:
+                    #                 # aux <=> color[parent[v],i] & color[v,j]
+                    #                 aux = self.new_variable()
+                    #                 self.add_clause(aux, -color[tree.parent[v]][i], -color[v][j])
+                    #                 self.add_clause(color[tree.parent[v]][i], -aux)
+                    #                 self.add_clause(color[v][j], -aux)
+                    #                 rhs.append(aux)
+                    #         self.add_clause(-transition[i][k][j],
+                    #                         -trans_event[i][k][tree.input_event[v]],
+                    #                         -first_fired[i][tree.input_number[v]][k],
+                    #                         *rhs)
+
+                    # y -> OR_{v|active}( color[parent[v],i] & color[v,j] )
+                    rhs = []
+                    for v in closed_range(2, V):
+                        if tree.output_event[v] != 0:
+                            # aux <=> color[parent[v],i] & color[v,j]
+                            aux = self.new_variable()
+                            self.add_clause(aux, -color[tree.parent[v]][i], -color[v][j])
+                            self.add_clause(color[tree.parent[v]][i], -aux)
+                            self.add_clause(color[v][j], -aux)
+                            rhs.append(aux)
+                    self.add_clause(-transition[i][k][j], *rhs)
 
         for c in closed_range(1, C):
             for k in closed_range(1, K - 1):
@@ -522,297 +560,301 @@ class Instance:
             for u in closed_range(1, U):
                 for k in closed_range(1, K):
                     # nf => ~value
-                    imply(not_fired[c][u][k], -value[c][k][1][u])
+                    imply(not_fired[c][u][k], -root_value[c][k][u])
                     # ff => value
-                    imply(first_fired[c][u][k], value[c][k][1][u])
+                    imply(first_fired[c][u][k], root_value[c][k][u])
                     # else => unconstrained
 
         log_debug(f'5. Clauses: {so_far()}', symbol='STAT')
 
-        # 6. Guard conditions constraints
-        # 6.1. ALO/AMO(nodetype)
+        # # 6. Guard conditions constraints
+        # # 6.1. ALO/AMO(nodetype)
+        # for c in closed_range(1, C):
+        #     for k in closed_range(1, K):
+        #         for p in closed_range(1, P):
+        #             ALO(nodetype[c][k][p])
+        #             AMO(nodetype[c][k][p])
+
+        # # 6.2. ALO/AMO(terminal)
+        # for c in closed_range(1, C):
+        #     for k in closed_range(1, K):
+        #         for p in closed_range(1, P):
+        #             ALO(terminal[c][k][p])
+        #             AMO(terminal[c][k][p])
+
+        # # 6.3. ALO/AMO(child_left)
+        # for c in closed_range(1, C):
+        #     for k in closed_range(1, K):
+        #         for p in closed_range(1, P):
+        #             ALO(child_left[c][k][p])
+        #             AMO(child_left[c][k][p])
+
+        # # 6.4. ALO/AMO(child_right)
+        # for c in closed_range(1, C):
+        #     for k in closed_range(1, K):
+        #         for p in closed_range(1, P):
+        #             ALO(child_right[c][k][p])
+        #             AMO(child_right[c][k][p])
+
+        # # 6.5. ALO/AMO(parent)
+        # for c in closed_range(1, C):
+        #     for k in closed_range(1, K):
+        #         for p in closed_range(1, P):
+        #             ALO(parent[c][k][p])
+        #             AMO(parent[c][k][p])
+
+        # log_debug(f'6. Clauses: {so_far()}', symbol='STAT')
+
+        # # 7. Extra guard conditions constraints
+        # # 7.1. Root has no parent
+        # for c in closed_range(1, C):
+        #     for k in closed_range(1, K):
+        #         self.add_clause(parent[c][k][1][0])
+
+        # # 7.2. BFS: typed nodes (except root) have parent with lesser number
+        # for c in closed_range(1, C):
+        #     for k in closed_range(1, K):
+        #         for p in closed_range(2, P):
+        #             # nodetype[p] != 4  =>  OR_par(parent[p] = par)
+        #             self.add_clause(nodetype[c][k][p][4],
+        #                             *[parent[c][k][p][par] for par in range(1, p)])
+
+        # # 7.3. parent<->child relation
+        # for c in closed_range(1, C):
+        #     for k in closed_range(1, K):
+        #         for p in closed_range(1, P - 1):
+        #             for ch in closed_range(p + 1, P):
+        #                 # parent[ch]=p => (child_left[p]=ch | child_right[p]=ch)
+        #                 self.add_clause(-parent[c][k][ch][p], child_left[c][k][p][ch], child_right[c][k][p][ch])
+
+        # log_debug(f'7. Clauses: {so_far()}', symbol='STAT')
+
+        # # 8. None-type nodes constraints
+        # # 8.1. None-type nodes have largest numbers
+        # for c in closed_range(1, C):
+        #     for k in closed_range(1, K):
+        #         for p in closed_range(1, P - 1):
+        #             imply(nodetype[c][k][p][4], nodetype[c][k][p + 1][4])
+
+        # # 8.2. None-type nodes have no parent
+        # for c in closed_range(1, C):
+        #     for k in closed_range(1, K):
+        #         for p in closed_range(1, P):
+        #             imply(nodetype[c][k][p][4], parent[c][k][p][0])
+
+        # # 8.3. None-type nodes have no children
+        # for c in closed_range(1, C):
+        #     for k in closed_range(1, K):
+        #         for p in closed_range(1, P):
+        #             imply(nodetype[c][k][p][4], child_left[c][k][p][0])
+        #             imply(nodetype[c][k][p][4], child_right[c][k][p][0])
+
+        # # 8.4. None-type nodes have False value and child_values
+        # for c in closed_range(1, C):
+        #     for k in closed_range(1, K):
+        #         for p in closed_range(1, P):
+        #             for u in closed_range(1, U):
+        #                 imply(nodetype[c][k][p][4], -value[c][k][p][u])
+        #                 imply(nodetype[c][k][p][4], -child_value_left[c][k][p][u])
+        #                 imply(nodetype[c][k][p][4], -child_value_right[c][k][p][u])
         for c in closed_range(1, C):
             for k in closed_range(1, K):
-                for p in closed_range(1, P):
-                    ALO(nodetype[c][k][p])
-                    AMO(nodetype[c][k][p])
+                for u in closed_range(1, U):
+                    imply(root_isnone[c][k], -root_value[c][k][u])
 
-        # 6.2. ALO/AMO(terminal)
-        for c in closed_range(1, C):
-            for k in closed_range(1, K):
-                for p in closed_range(1, P):
-                    ALO(terminal[c][k][p])
-                    AMO(terminal[c][k][p])
+        # log_debug(f'8. Clauses: {so_far()}', symbol='STAT')
 
-        # 6.3. ALO/AMO(child_left)
-        for c in closed_range(1, C):
-            for k in closed_range(1, K):
-                for p in closed_range(1, P):
-                    ALO(child_left[c][k][p])
-                    AMO(child_left[c][k][p])
+        # # 9. Terminals constraints
+        # # 9.1. Only terminals have associated terminal variables
+        # for c in closed_range(1, C):
+        #     for k in closed_range(1, K):
+        #         for p in closed_range(1, P):
+        #             iff(nodetype[c][k][p][0], -terminal[c][k][p][0])
 
-        # 6.4. ALO/AMO(child_right)
-        for c in closed_range(1, C):
-            for k in closed_range(1, K):
-                for p in closed_range(1, P):
-                    ALO(child_right[c][k][p])
-                    AMO(child_right[c][k][p])
+        # # 9.2. Terminals have no children
+        # for c in closed_range(1, C):
+        #     for k in closed_range(1, K):
+        #         for p in closed_range(1, P):
+        #             imply(nodetype[c][k][p][0], child_left[c][k][p][0])
+        #             imply(nodetype[c][k][p][0], child_right[c][k][p][0])
 
-        # 6.5. ALO/AMO(parent)
-        for c in closed_range(1, C):
-            for k in closed_range(1, K):
-                for p in closed_range(1, P):
-                    ALO(parent[c][k][p])
-                    AMO(parent[c][k][p])
+        # # 9.3. Terminals have value from associated input variable
+        # for c in closed_range(1, C):
+        #     for k in closed_range(1, K):
+        #         for p in closed_range(1, P):
+        #             for x in closed_range(1, X):
+        #                 for u in closed_range(1, U):
+        #                     if tree.unique_input[u][x]:
+        #                         imply(terminal[c][k][p][x], value[c][k][p][u])
+        #                     else:
+        #                         imply(terminal[c][k][p][x], -value[c][k][p][u])
 
-        log_debug(f'6. Clauses: {so_far()}', symbol='STAT')
+        # log_debug(f'9. Clauses: {so_far()}', symbol='STAT')
 
-        # 7. Extra guard conditions constraints
-        # 7.1. Root has no parent
-        for c in closed_range(1, C):
-            for k in closed_range(1, K):
-                self.add_clause(parent[c][k][1][0])
+        # # 10. AND/OR nodes constraints
+        # # 10.0. AND/OR nodes cannot have numbers P-1 or P
+        # for c in closed_range(1, C):
+        #     for k in closed_range(1, K):
+        #         if P >= 1:
+        #             self.add_clause(-nodetype[c][k][P][1])
+        #             self.add_clause(-nodetype[c][k][P][2])
+        #         if P >= 2:
+        #             self.add_clause(-nodetype[c][k][P - 1][1])
+        #             self.add_clause(-nodetype[c][k][P - 1][2])
 
-        # 7.2. BFS: typed nodes (except root) have parent with lesser number
-        for c in closed_range(1, C):
-            for k in closed_range(1, K):
-                for p in closed_range(2, P):
-                    # nodetype[p] != 4  =>  OR_par(parent[p] = par)
-                    self.add_clause(nodetype[c][k][p][4],
-                                    *[parent[c][k][p][par] for par in range(1, p)])
+        # # 10.1. AND/OR: left child has greater number
+        # for c in closed_range(1, C):
+        #     for k in closed_range(1, K):
+        #         for p in closed_range(1, P - 2):
+        #             _cons = [child_left[c][k][p][ch] for ch in closed_range(p + 1, P - 1)]
+        #             self.add_clause(-nodetype[c][k][p][1], *_cons)
+        #             self.add_clause(-nodetype[c][k][p][2], *_cons)
 
-        # 7.3. parent<->child relation
-        for c in closed_range(1, C):
-            for k in closed_range(1, K):
-                for p in closed_range(1, P - 1):
-                    for ch in closed_range(p + 1, P):
-                        # parent[ch]=p => (child_left[p]=ch | child_right[p]=ch)
-                        self.add_clause(-parent[c][k][ch][p], child_left[c][k][p][ch], child_right[c][k][p][ch])
+        # # 10.2. AND/OR: right child is adjacent (+1) to left
+        # for c in closed_range(1, C):
+        #     for k in closed_range(1, K):
+        #         for p in closed_range(1, P - 2):
+        #             for ch in closed_range(p + 1, P - 1):
+        #                 for nt in [1, 2]:
+        #                     # (nodetype[p]=nt & child_left[p]=ch) => child_right[p]=ch+1
+        #                     self.add_clause(-nodetype[c][k][p][nt],
+        #                                     -child_left[c][k][p][ch],
+        #                                     child_right[c][k][p][ch + 1])
 
-        log_debug(f'7. Clauses: {so_far()}', symbol='STAT')
+        # # 10.3. AND/OR: children`s parents
+        # for c in closed_range(1, C):
+        #     for k in closed_range(1, K):
+        #         for p in closed_range(1, P - 2):
+        #             for ch in closed_range(p + 1, P - 1):
+        #                 for nt in [1, 2]:
+        #                     # (nodetype[p]=nt & child_left[p]=ch) => (parent[ch]=p & parent[ch+1]=p)
+        #                     _cons = [-nodetype[c][k][p][nt], -child_left[c][k][p][ch]]
+        #                     self.add_clause(*_cons, parent[c][k][ch][p])
+        #                     self.add_clause(*_cons, parent[c][k][ch + 1][p])
 
-        # 8. None-type nodes constraints
-        # 8.1. None-type nodes have largest numbers
-        for c in closed_range(1, C):
-            for k in closed_range(1, K):
-                for p in closed_range(1, P - 1):
-                    imply(nodetype[c][k][p][4], nodetype[c][k][p + 1][4])
+        # # 10.4a AND/OR: child_value_left is a value of left child
+        # for c in closed_range(1, C):
+        #     for k in closed_range(1, K):
+        #         for p in closed_range(1, P - 2):
+        #             for ch in closed_range(p + 1, P - 1):
+        #                 for u in closed_range(1, U):
+        #                     for nt in [1, 2]:
+        #                         # (nodetype[p]=nt & child_left[p]=ch) => (child_value_left[p,u] <=> value[ch,u])
+        #                         x1 = nodetype[c][k][p][nt]
+        #                         x2 = child_left[c][k][p][ch]
+        #                         x3 = child_value_left[c][k][p][u]
+        #                         x4 = value[c][k][ch][u]
+        #                         self.add_clause(-x1, -x2, -x3, x4)
+        #                         self.add_clause(-x1, -x2, x3, -x4)
 
-        # 8.2. None-type nodes have no parent
-        for c in closed_range(1, C):
-            for k in closed_range(1, K):
-                for p in closed_range(1, P):
-                    imply(nodetype[c][k][p][4], parent[c][k][p][0])
+        # # 10.4b AND/OR: child_value_right is a value of right child
+        # for c in closed_range(1, C):
+        #     for k in closed_range(1, K):
+        #         for p in closed_range(1, P - 2):
+        #             for ch in closed_range(p + 2, P):
+        #                 for u in closed_range(1, U):
+        #                     for nt in [1, 2]:
+        #                         # (nodetype[p]=nt & child_right[p]=ch) => (child_value_right[p,u] <=> value[ch,u])
+        #                         x1 = nodetype[c][k][p][nt]
+        #                         x2 = child_right[c][k][p][ch]
+        #                         x3 = child_value_right[c][k][p][u]
+        #                         x4 = value[c][k][ch][u]
+        #                         self.add_clause(-x1, -x2, -x3, x4)
+        #                         self.add_clause(-x1, -x2, x3, -x4)
 
-        # 8.3. None-type nodes have no children
-        for c in closed_range(1, C):
-            for k in closed_range(1, K):
-                for p in closed_range(1, P):
-                    imply(nodetype[c][k][p][4], child_left[c][k][p][0])
-                    imply(nodetype[c][k][p][4], child_right[c][k][p][0])
+        # # 10.5a AND: value is calculated as a conjunction of children
+        # for c in closed_range(1, C):
+        #     for k in closed_range(1, K):
+        #         for p in closed_range(1, P - 2):
+        #             for u in closed_range(1, U):
+        #                 # nodetype[p]=1 => (value[p,u] <=> cvl[p,u] & cvr[p,u])
+        #                 x1 = nodetype[c][k][p][1]
+        #                 x2 = value[c][k][p][u]
+        #                 x3 = child_value_left[c][k][p][u]
+        #                 x4 = child_value_right[c][k][p][u]
+        #                 self.add_clause(-x1, x2, -x3, -x4)
+        #                 self.add_clause(-x1, -x2, x3)
+        #                 self.add_clause(-x1, -x2, x4)
 
-        # 8.4. None-type nodes have False value and child_values
-        for c in closed_range(1, C):
-            for k in closed_range(1, K):
-                for p in closed_range(1, P):
-                    for u in closed_range(1, U):
-                        imply(nodetype[c][k][p][4], -value[c][k][p][u])
-                        imply(nodetype[c][k][p][4], -child_value_left[c][k][p][u])
-                        imply(nodetype[c][k][p][4], -child_value_right[c][k][p][u])
+        # # 10.5b OR: value is calculated as a disjunction of children
+        # for c in closed_range(1, C):
+        #     for k in closed_range(1, K):
+        #         for p in closed_range(1, P - 2):
+        #             for u in closed_range(1, U):
+        #                 # nodetype[p]=2 => (value[p,u] <=> cvl[p,u] | cvr[p,u])
+        #                 x1 = nodetype[c][k][p][2]
+        #                 x2 = value[c][k][p][u]
+        #                 x3 = child_value_left[c][k][p][u]
+        #                 x4 = child_value_right[c][k][p][u]
+        #                 self.add_clause(-x1, -x2, x3, x4)
+        #                 self.add_clause(-x1, x2, -x3)
+        #                 self.add_clause(-x1, x2, -x4)
 
-        log_debug(f'8. Clauses: {so_far()}', symbol='STAT')
+        # log_debug(f'10. Clauses: {so_far()}', symbol='STAT')
+        # # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 
-        # 9. Terminals constraints
-        # 9.1. Only terminals have associated terminal variables
-        for c in closed_range(1, C):
-            for k in closed_range(1, K):
-                for p in closed_range(1, P):
-                    iff(nodetype[c][k][p][0], -terminal[c][k][p][0])
+        # # 11. NOT nodes constraints
+        # # 11.0. NOT nodes cannot have number P
+        # for c in closed_range(1, C):
+        #     for k in closed_range(1, K):
+        #         self.add_clause(-nodetype[c][k][P][3])
 
-        # 9.2. Terminals have no children
-        for c in closed_range(1, C):
-            for k in closed_range(1, K):
-                for p in closed_range(1, P):
-                    imply(nodetype[c][k][p][0], child_left[c][k][p][0])
-                    imply(nodetype[c][k][p][0], child_right[c][k][p][0])
+        # # 11.1. NOT: left child has greater number
+        # for c in closed_range(1, C):
+        #     for k in closed_range(1, K):
+        #         for p in closed_range(1, P - 1):
+        #             # nodetype[p]=3 => OR_ch(child_left[p]=ch)
+        #             _cons = [child_left[c][k][p][ch] for ch in closed_range(p + 1, P)]
+        #             self.add_clause(-nodetype[c][k][p][3], *_cons)
 
-        # 9.3. Terminals have value from associated input variable
-        for c in closed_range(1, C):
-            for k in closed_range(1, K):
-                for p in closed_range(1, P):
-                    for x in closed_range(1, X):
-                        for u in closed_range(1, U):
-                            if tree.unique_input[u][x]:
-                                imply(terminal[c][k][p][x], value[c][k][p][u])
-                            else:
-                                imply(terminal[c][k][p][x], -value[c][k][p][u])
+        # # 11.2. NOT: no right child
+        # for c in closed_range(1, C):
+        #     for k in closed_range(1, K):
+        #         for p in closed_range(1, P - 1):
+        #             imply(nodetype[c][k][p][3], child_right[c][k][p][0])
 
-        log_debug(f'9. Clauses: {so_far()}', symbol='STAT')
+        # # 11.3. NOT: child`s parents
+        # for c in closed_range(1, C):
+        #     for k in closed_range(1, K):
+        #         for p in closed_range(1, P - 1):
+        #             for ch in closed_range(p + 1, P):
+        #                 # (nodetype[p]=3 & child_left[p]=ch) => parent[ch] = p
+        #                 self.add_clause(-nodetype[c][k][p][3],
+        #                                 -child_left[c][k][p][ch],
+        #                                 parent[c][k][ch][p])
 
-        # 10. AND/OR nodes constraints
-        # 10.0. AND/OR nodes cannot have numbers P-1 or P
-        for c in closed_range(1, C):
-            for k in closed_range(1, K):
-                if P >= 1:
-                    self.add_clause(-nodetype[c][k][P][1])
-                    self.add_clause(-nodetype[c][k][P][2])
-                if P >= 2:
-                    self.add_clause(-nodetype[c][k][P - 1][1])
-                    self.add_clause(-nodetype[c][k][P - 1][2])
+        # # 11.4a NOT: child_value_left is a value of left child
+        # for c in closed_range(1, C):
+        #     for k in closed_range(1, K):
+        #         for p in closed_range(1, P - 1):
+        #             for ch in closed_range(p + 1, P):
+        #                 for u in closed_range(1, U):
+        #                     # (nodetype[p]=3 & child_left[p]=ch) => (value[ch,u] <=> cvl[p,u])
+        #                     x1 = nodetype[c][k][p][3]
+        #                     x2 = child_left[c][k][p][ch]
+        #                     x3 = value[c][k][ch][u]
+        #                     x4 = child_value_left[c][k][p][u]
+        #                     self.add_clause(-x1, -x2, -x3, x4)
+        #                     self.add_clause(-x1, -x2, x3, -x4)
 
-        # 10.1. AND/OR: left child has greater number
-        for c in closed_range(1, C):
-            for k in closed_range(1, K):
-                for p in closed_range(1, P - 2):
-                    _cons = [child_left[c][k][p][ch] for ch in closed_range(p + 1, P - 1)]
-                    self.add_clause(-nodetype[c][k][p][1], *_cons)
-                    self.add_clause(-nodetype[c][k][p][2], *_cons)
+        # # 11.4b NOT: child_value_right is False
+        # for c in closed_range(1, C):
+        #     for k in closed_range(1, K):
+        #         for p in closed_range(1, P - 1):
+        #             for u in closed_range(1, U):
+        #                 imply(nodetype[c][k][p][3], -child_value_right[c][k][p][u])
 
-        # 10.2. AND/OR: right child is adjacent (+1) to left
-        for c in closed_range(1, C):
-            for k in closed_range(1, K):
-                for p in closed_range(1, P - 2):
-                    for ch in closed_range(p + 1, P - 1):
-                        for nt in [1, 2]:
-                            # (nodetype[p]=nt & child_left[p]=ch) => child_right[p]=ch+1
-                            self.add_clause(-nodetype[c][k][p][nt],
-                                            -child_left[c][k][p][ch],
-                                            child_right[c][k][p][ch + 1])
-
-        # 10.3. AND/OR: children`s parents
-        for c in closed_range(1, C):
-            for k in closed_range(1, K):
-                for p in closed_range(1, P - 2):
-                    for ch in closed_range(p + 1, P - 1):
-                        for nt in [1, 2]:
-                            # (nodetype[p]=nt & child_left[p]=ch) => (parent[ch]=p & parent[ch+1]=p)
-                            _cons = [-nodetype[c][k][p][nt], -child_left[c][k][p][ch]]
-                            self.add_clause(*_cons, parent[c][k][ch][p])
-                            self.add_clause(*_cons, parent[c][k][ch + 1][p])
-
-        # 10.4a AND/OR: child_value_left is a value of left child
-        for c in closed_range(1, C):
-            for k in closed_range(1, K):
-                for p in closed_range(1, P - 2):
-                    for ch in closed_range(p + 1, P - 1):
-                        for u in closed_range(1, U):
-                            for nt in [1, 2]:
-                                # (nodetype[p]=nt & child_left[p]=ch) => (child_value_left[p,u] <=> value[ch,u])
-                                x1 = nodetype[c][k][p][nt]
-                                x2 = child_left[c][k][p][ch]
-                                x3 = child_value_left[c][k][p][u]
-                                x4 = value[c][k][ch][u]
-                                self.add_clause(-x1, -x2, -x3, x4)
-                                self.add_clause(-x1, -x2, x3, -x4)
-
-        # 10.4b AND/OR: child_value_right is a value of right child
-        for c in closed_range(1, C):
-            for k in closed_range(1, K):
-                for p in closed_range(1, P - 2):
-                    for ch in closed_range(p + 2, P):
-                        for u in closed_range(1, U):
-                            for nt in [1, 2]:
-                                # (nodetype[p]=nt & child_right[p]=ch) => (child_value_right[p,u] <=> value[ch,u])
-                                x1 = nodetype[c][k][p][nt]
-                                x2 = child_right[c][k][p][ch]
-                                x3 = child_value_right[c][k][p][u]
-                                x4 = value[c][k][ch][u]
-                                self.add_clause(-x1, -x2, -x3, x4)
-                                self.add_clause(-x1, -x2, x3, -x4)
-
-        # 10.5a AND: value is calculated as a conjunction of children
-        for c in closed_range(1, C):
-            for k in closed_range(1, K):
-                for p in closed_range(1, P - 2):
-                    for u in closed_range(1, U):
-                        # nodetype[p]=1 => (value[p,u] <=> cvl[p,u] & cvr[p,u])
-                        x1 = nodetype[c][k][p][1]
-                        x2 = value[c][k][p][u]
-                        x3 = child_value_left[c][k][p][u]
-                        x4 = child_value_right[c][k][p][u]
-                        self.add_clause(-x1, x2, -x3, -x4)
-                        self.add_clause(-x1, -x2, x3)
-                        self.add_clause(-x1, -x2, x4)
-
-        # 10.5b OR: value is calculated as a disjunction of children
-        for c in closed_range(1, C):
-            for k in closed_range(1, K):
-                for p in closed_range(1, P - 2):
-                    for u in closed_range(1, U):
-                        # nodetype[p]=2 => (value[p,u] <=> cvl[p,u] | cvr[p,u])
-                        x1 = nodetype[c][k][p][2]
-                        x2 = value[c][k][p][u]
-                        x3 = child_value_left[c][k][p][u]
-                        x4 = child_value_right[c][k][p][u]
-                        self.add_clause(-x1, -x2, x3, x4)
-                        self.add_clause(-x1, x2, -x3)
-                        self.add_clause(-x1, x2, -x4)
-
-        log_debug(f'10. Clauses: {so_far()}', symbol='STAT')
-        # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-
-        # 11. NOT nodes constraints
-        # 11.0. NOT nodes cannot have number P
-        for c in closed_range(1, C):
-            for k in closed_range(1, K):
-                self.add_clause(-nodetype[c][k][P][3])
-
-        # 11.1. NOT: left child has greater number
-        for c in closed_range(1, C):
-            for k in closed_range(1, K):
-                for p in closed_range(1, P - 1):
-                    # nodetype[p]=3 => OR_ch(child_left[p]=ch)
-                    _cons = [child_left[c][k][p][ch] for ch in closed_range(p + 1, P)]
-                    self.add_clause(-nodetype[c][k][p][3], *_cons)
-
-        # 11.2. NOT: no right child
-        for c in closed_range(1, C):
-            for k in closed_range(1, K):
-                for p in closed_range(1, P - 1):
-                    imply(nodetype[c][k][p][3], child_right[c][k][p][0])
-
-        # 11.3. NOT: child`s parents
-        for c in closed_range(1, C):
-            for k in closed_range(1, K):
-                for p in closed_range(1, P - 1):
-                    for ch in closed_range(p + 1, P):
-                        # (nodetype[p]=3 & child_left[p]=ch) => parent[ch] = p
-                        self.add_clause(-nodetype[c][k][p][3],
-                                        -child_left[c][k][p][ch],
-                                        parent[c][k][ch][p])
-
-        # 11.4a NOT: child_value_left is a value of left child
-        for c in closed_range(1, C):
-            for k in closed_range(1, K):
-                for p in closed_range(1, P - 1):
-                    for ch in closed_range(p + 1, P):
-                        for u in closed_range(1, U):
-                            # (nodetype[p]=3 & child_left[p]=ch) => (value[ch,u] <=> cvl[p,u])
-                            x1 = nodetype[c][k][p][3]
-                            x2 = child_left[c][k][p][ch]
-                            x3 = value[c][k][ch][u]
-                            x4 = child_value_left[c][k][p][u]
-                            self.add_clause(-x1, -x2, -x3, x4)
-                            self.add_clause(-x1, -x2, x3, -x4)
-
-        # 11.4b NOT: child_value_right is False
-        for c in closed_range(1, C):
-            for k in closed_range(1, K):
-                for p in closed_range(1, P - 1):
-                    for u in closed_range(1, U):
-                        imply(nodetype[c][k][p][3], -child_value_right[c][k][p][u])
-
-        # 11.5. NOT: value is calculated as a negation of child
-        for c in closed_range(1, C):
-            for k in closed_range(1, K):
-                for p in closed_range(1, P - 1):
-                    for u in closed_range(1, U):
-                        # nodetype[p]=3 => (value[p,u] <=> ~cvl[p,u])
-                        x1 = nodetype[c][k][p][3]
-                        x2 = value[c][k][p][u]
-                        x3 = child_value_left[c][k][p][u]
-                        self.add_clause(-x1, -x2, -x3)
-                        self.add_clause(-x1, x2, x3)
+        # # 11.5. NOT: value is calculated as a negation of child
+        # for c in closed_range(1, C):
+        #     for k in closed_range(1, K):
+        #         for p in closed_range(1, P - 1):
+        #             for u in closed_range(1, U):
+        #                 # nodetype[p]=3 => (value[p,u] <=> ~cvl[p,u])
+        #                 x1 = nodetype[c][k][p][3]
+        #                 x2 = value[c][k][p][u]
+        #                 x3 = child_value_left[c][k][p][u]
+        #                 self.add_clause(-x1, -x2, -x3)
+        #                 self.add_clause(-x1, x2, x3)
 
         log_debug(f'11. Clauses: {so_far()}', symbol='STAT')
 
@@ -857,16 +899,16 @@ class Instance:
         # adhoc-1
         for c in closed_range(1, C):
             for k in closed_range(1, K):
-                iff(transition[c][k][0], nodetype[c][k][1][4])
+                iff(transition[c][k][0], root_isnone[c][k])
 
         # adhoc-2
         for c in closed_range(1, C):
             for k in closed_range(1, K):
                 for u in closed_range(1, U):
                     # (t!=0 & nf) => nodetype[1]!=4
-                    self.add_clause(transition[c][k][0], -not_fired[c][u][k], -nodetype[c][k][1][4])
+                    self.add_clause(transition[c][k][0], -not_fired[c][u][k], -root_isnone[c][k])
                     # ff => nodetype[1]!=4
-                    imply(first_fired[c][u][k], -nodetype[c][k][1][4])
+                    imply(first_fired[c][u][k], -root_isnone[c][k])
 
         log_debug(f'A. Clauses: {so_far()}', symbol='STAT')
 
@@ -882,14 +924,16 @@ class Instance:
             output_event=output_event,
             algorithm_0=algorithm_0,
             algorithm_1=algorithm_1,
-            nodetype=nodetype,
-            terminal=terminal,
-            child_left=child_left,
-            child_right=child_right,
-            parent=parent,
-            value=value,
-            child_value_left=child_value_left,
-            child_value_right=child_value_right,
+            # nodetype=nodetype,
+            # terminal=terminal,
+            # child_left=child_left,
+            # child_right=child_right,
+            # parent=parent,
+            # value=value,
+            # child_value_left=child_value_left,
+            # child_value_right=child_value_right,
+            root_isnone=root_isnone,
+            root_value=root_value,
             first_fired=first_fired,
             not_fired=not_fired,
             totalizer=None
@@ -905,10 +949,9 @@ class Instance:
         filename = self.get_filename_totalizer()
         self.maybe_new_stream(filename)
 
-        _E = [-self.reduction.nodetype[c][k][p][4]
+        _E = [-self.reduction.root_isnone[c][k]
               for c in closed_range(1, self.C)
-              for k in closed_range(1, self.K)
-              for p in closed_range(1, self.P)]  # set of input variables
+              for k in closed_range(1, self.K)]  # set of input variables
         _L = []  # set of linking variables
 
         q = deque([e] for e in _E)
@@ -972,7 +1015,8 @@ class Instance:
         if self.is_pysat and self.N_defined is not None:
             N_max = self.N_defined
         else:
-            N_max = self.C * self.K * self.P
+            # N_max = self.C * self.K * self.P
+            N_max = self.C * self.K
 
         # sum(E) <= N   <=>   sum(E) < N + 1
         for n in reversed(closed_range(self.N + 1, N_max)):
@@ -1092,7 +1136,8 @@ class Instance:
                                      for item in subdata[1:])
                              for subdata in data[1:]]
 
-        nodetype = wrapper_int(self.reduction.nodetype)
+        # nodetype = wrapper_int(self.reduction.nodetype)
+        root_isnone = wrapper_bool(self.reduction.root_isnone)
         assignment = self.Assignment(
             color=wrapper_int(self.reduction.color),
             transition=wrapper_int(self.reduction.transition),
@@ -1100,36 +1145,37 @@ class Instance:
             output_event=wrapper_int(self.reduction.output_event),
             algorithm_0=wrapper_algo(self.reduction.algorithm_0),
             algorithm_1=wrapper_algo(self.reduction.algorithm_1),
-            nodetype=nodetype,
-            terminal=wrapper_int(self.reduction.terminal),
-            child_left=wrapper_int(self.reduction.child_left),
-            child_right=wrapper_int(self.reduction.child_right),
-            parent=wrapper_int(self.reduction.parent),
-            value=wrapper_bool(self.reduction.value),
-            child_value_left=wrapper_bool(self.reduction.child_value_left),
-            child_value_right=wrapper_bool(self.reduction.child_value_right),
+            # nodetype=nodetype,
+            # terminal=wrapper_int(self.reduction.terminal),
+            # child_left=wrapper_int(self.reduction.child_left),
+            # child_right=wrapper_int(self.reduction.child_right),
+            # parent=wrapper_int(self.reduction.parent),
+            # value=wrapper_bool(self.reduction.value),
+            # child_value_left=wrapper_bool(self.reduction.child_value_left),
+            # child_value_right=wrapper_bool(self.reduction.child_value_right),
+            root_isnone=root_isnone,
+            root_value=wrapper_bool(self.reduction.root_value),
             first_fired=wrapper_bool(self.reduction.first_fired),
             not_fired=wrapper_bool(self.reduction.not_fired),
             C=self.C,
             K=self.K,
             P=self.P,
-            N=sum(nodetype[c][k][p] != 4
+            N=sum(not root_isnone[c][k]
                   for c in closed_range(1, self.C)
-                  for k in closed_range(1, self.K)
-                  for p in closed_range(1, self.P)),
+                  for k in closed_range(1, self.K)),
         )
 
-        # for u in closed_range(1, self.scenario_tree.U):
-        #     inputs = ''.join({True: '1', False: '0'}[q] for q in self.scenario_tree.unique_input[u][1:])
-        #     log_debug(f'tree.unique_input[u={u: >2}] = {inputs}')
+        for u in closed_range(1, self.scenario_tree.U):
+            inputs = ''.join({True: '1', False: '0'}[q] for q in self.scenario_tree.unique_input[u][1:])
+            log_debug(f'tree.unique_input[u={u: >2}] = {inputs}')
 
-        # for c in closed_range(1, self.C):
-        #     for k in closed_range(1, self.K):
-        #         if assignment.transition[c][k] == 0:
-        #             log_debug(f'{k}th transition from {c} is none')
-        #         else:
-        #             root_values = ''.join({True: '1', False: '0'}[q] for q in assignment.value[c][k][1][1:])
-        #             log_debug(f'{k}th transition from {c} -> {assignment.transition[c][k]} with root values: {root_values}')
+        for c in closed_range(1, self.C):
+            for k in closed_range(1, self.K):
+                if assignment.root_isnone[c][k]:
+                    log_debug(f'{k}th transition from {c} is none')
+                else:
+                    root_values = ''.join({True: '1', False: '0'}[q] for q in assignment.root_value[c][k][1:])
+                    log_debug(f'{k}th transition from {c} -> {assignment.transition[c][k]} with root values: {root_values}')
 
         log_debug(f'Done building assignment (N={assignment.N}) in {time.time() - time_start_assignment:.2f} s')
         return assignment
@@ -1214,21 +1260,21 @@ class Instance:
                 dest = assignment.transition[c][k]
                 if dest != 0:
                     input_event = input_events[assignment.trans_event[c][k] - 1]
-                    guard = ParseTreeGuard(assignment.nodetype[c][k],
-                                           assignment.terminal[c][k],
-                                           assignment.parent[c][k],
-                                           assignment.child_left[c][k],
-                                           assignment.child_right[c][k])
+                    guard = Guard([None] + [4 if assignment.root_isnone[c][k] else 0],
+                                  [None] + [10],
+                                  [None] + [0],
+                                  [None] + [0],
+                                  [None] + [0],)
                     efsm.add_transition(c, dest, input_event, guard)
-                # else:
-                #     log_debug(f'state {c} has no {k}-th transition')
+                else:
+                    log_debug(f'state {c} has no {k}-th transition')
 
         # =======================
         efsm.pprint()
         # =======================
 
-        if efsm.number_of_nodes != assignment.N:
-            log_error(f'Inequal number of nodes: efsm has {efsm.number_of_nodes}, assignment has {assignment.N}')
+        # if efsm.number_of_nodes != assignment.N:
+        #     log_error(f'Inequal number of nodes: efsm has {efsm.number_of_nodes}, assignment has {assignment.N}')
 
         log_debug(f'Done building EFSM with {efsm.number_of_states} states, {efsm.number_of_transitions} transitions and {efsm.number_of_nodes} nodes in {time.time() - time_start_build:.2f} s')
         return efsm

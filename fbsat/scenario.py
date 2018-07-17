@@ -1,5 +1,4 @@
-__all__ = ('OutputAction', 'ScenarioElement', 'Scenario', 'ScenarioTree')
-
+import os
 import time
 import itertools
 
@@ -7,9 +6,11 @@ import regex
 import click
 import treelib
 
-from .efsm import Guard
+from .efsm import ParseTreeGuard
 from .utils import *
 from .printers import *
+
+__all__ = ['ScenarioTree']
 
 
 class OutputAction:
@@ -240,10 +241,11 @@ class ScenarioTree(treelib.Tree):
         tree = ScenarioTree(scenarios)
         tree.predicate_names = read_names(filename_predicate_names)
         tree.output_variable_names = read_names(filename_output_variable_names)
+        tree.scenarios_filename = filename_scenarios
         # ===========
         # FIXME: dirty
-        Guard.Node.predicate_names = tree.predicate_names
-        Guard.Node.output_variable_names = tree.output_variable_names
+        ParseTreeGuard.Node.predicate_names = tree.predicate_names
+        ParseTreeGuard.Node.output_variable_names = tree.output_variable_names
         # ===========
         return tree
 
@@ -268,6 +270,13 @@ class ScenarioTree(treelib.Tree):
     @output_variable_names.setter
     def output_variable_names(self, value):
         self._output_variable_names = value
+
+    @property
+    def scenarios_stem(self):
+        if hasattr(self, 'scenarios_filename'):
+            return os.path.splitext(os.path.basename(self.scenarios_filename))[0]
+        else:
+            return 'unknown'
 
     def pprint(self, n=None):
         log_debug('Scenario tree:')

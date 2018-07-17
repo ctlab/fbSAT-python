@@ -20,7 +20,7 @@ VARIABLES = 'color transition output_event algorithm_0 algorithm_1'
 
 class Instance:
 
-    Reduction = namedtuple('Reduction', VARIABLES + ' tr totalizers')
+    Reduction = namedtuple('Reduction', VARIABLES + ' totalizer')
     Assignment = namedtuple('Assignment', VARIABLES + ' C K')
 
     def __init__(self, *, scenario_tree, C=None, K=None, C_max=None, is_minimize=True, is_incremental=False, sat_solver=None, sat_isolver=None, filename_prefix='', write_strategy='StringIO', is_reuse=False):
@@ -60,12 +60,12 @@ class Instance:
             efsm = self.build_efsm(self.best)
 
             # ===========
-            filename_automaton = f'{self.filename_prefix}_automaton_basic'
+            filename_automaton = f'{self.filename_prefix}_TEST_automaton_basic'
             with open(filename_automaton, 'wb') as f:
                 pickle.dump(efsm, f, pickle.HIGHEST_PROTOCOL)
             # ===========
 
-            filename_gv = f'{self.filename_prefix}_C{self.best.C}{self.maybe_k(self.best.K)}_efsm_basic.gv'
+            filename_gv = f'{self.filename_prefix}_C{self.best.C}{self.maybe_k(self.best.K)}_TEST_efsm_basic.gv'
             os.makedirs(os.path.dirname(filename_gv), exist_ok=True)
             efsm.write_gv(filename_gv)
 
@@ -115,55 +115,26 @@ class Instance:
         assignment = self.solve()
         log_br()
 
-        if assignment:  # SAT, start minimizing K
-            self.best = assignment
+        if assignment:
+            self.generate_totalizer()
+            _nv = self.number_of_variables  # base+totalizer variables
+            _nc = self.number_of_clauses    # base+totalizer clauses
 
-            self.generate_pre()
-            _nv = self.number_of_variables  # base+pre variables
-            _nc = self.number_of_clauses    # base+pre clauses
+        while assignment is not None:
+            self.best = assignment
+            self.K = assignment.K - 1
+            log_info(f'Trying K = {self.K}')
 
             if self.is_incremental:
-                self.isolver_process = subprocess.Popen(self.sat_isolver, shell=True, universal_newlines=True,
-                                                        stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-                self.feed_isolver(self.get_filename_base())
-                self.feed_isolver(self.get_filename_pre())
+                # self.generate_comparator_isolver()
+                raise NotImplementedError
+            else:
+                self.number_of_variables = _nv
+                self.number_of_clauses = _nc
+                self.generate_comparator()
 
-                self.K_defined = None
-
-                # Note: K=C-1 == unconstrained base reduction
-                for K in reversed(closed_range(0, C - 2)):
-                    log_info(f'Trying K = {K}')
-                    self.K = K
-                    self.generate_cardinality_isolver()
-
-                    assignment = self.solve_incremental()
-                    log_br()
-
-                    if assignment is None:  # UNSAT, the answer is last solution (self.best)
-                        break
-
-                    self.best = assignment  # update best found solution
-                else:
-                    log_warn('Reached K=0, weird...')
-
-                self.isolver_process.kill()
-            else:  # non-incrementaly
-                # Note: K=C-1 == unconstrained base reduction
-                for K in closed_range(0, C - 2):
-                    log_info(f'Trying K = {K}')
-                    self.K = K
-                    self.number_of_variables = _nv
-                    self.number_of_clauses = _nc
-                    self.generate_cardinality()
-
-                    assignment = self.solve()
-                    log_br()
-
-                    if assignment:  # SAT, this is the answer
-                        self.best = assignment
-                        break
-                else:
-                    log_warn(f'Reached K=C-2={C-2} and did not find any solution, weird...')
+            assignment = self.solve()
+            log_br()
 
         return self.best
 
@@ -176,8 +147,8 @@ class Instance:
         self.generate_base()
 
         if self.K is not None:
-            self.generate_pre()
-            self.generate_cardinality()
+            self.generate_totalizer()
+            self.generate_comparator()
 
         assignment = self.solve()
         log_br()
@@ -348,7 +319,7 @@ class Instance:
 
         # automaton variables
         color = self.declare_array(V, C)
-        transition = self.declare_array(C, E, U, C)
+        transition = self.declare_array(C, E, U, C, with_zero=True)
         algorithm_0 = self.declare_array(C, Z)
         algorithm_1 = self.declare_array(C, Z)
         output_event = self.declare_array(C, O)
@@ -368,6 +339,29 @@ class Instance:
             for a in range(lower, upper):
                 for b in closed_range(a + 1, upper):
                     self.add_clause(-data[a], -data[b])
+
+        def imply(lhs, rhs):
+            """lhs => rhs"""
+            self.add_clause(-lhs, rhs)
+
+        def iff(lhs, rhs):
+            """lhs <=> rhs"""
+            imply(lhs, rhs)
+            imply(rhs, lhs)
+
+        def iff_and(lhs, rhs):
+            """lhs <=> AND(rhs)"""
+            rhs = tuple(rhs)
+            for x in rhs:
+                self.add_clause(x, -lhs)
+            self.add_clause(lhs, *(-x for x in rhs))
+
+        def iff_or(lhs, rhs):
+            """lhs <=> OR(rhs)"""
+            rhs = tuple(rhs)
+            for x in rhs:
+                self.add_clause(-x, lhs)
+            self.add_clause(-lhs, *rhs)
 
         so_far_state = [self.number_of_clauses]
 
@@ -392,8 +386,7 @@ class Instance:
             for c in closed_range(1, C):
                 if tree.output_event[v] == 0:
                     # IF toe[v]=0 THEN color[v,c] <=> color[parent[v],c]
-                    self.add_clause(-color[v][c], color[tree.parent[v]][c])
-                    self.add_clause(color[v][c], -color[tree.parent[v]][c])
+                    iff(color[v][c], color[tree.parent[v]][c])
                 else:
                     # IF toe[v]!=0 THEN not (color[v,c] and color[parent[v],c])
                     self.add_clause(-color[v][c], -color[tree.parent[v]][c])
@@ -410,32 +403,28 @@ class Instance:
 
         # 2.1. Transition definition
         for i in closed_range(1, C):
-            for j in closed_range(1, C):
-                if i == j:
-                    continue
-                for e in closed_range(1, E):
-                    for u in closed_range(1, U):
+            for e in closed_range(1, E):
+                for u in closed_range(1, U):
+                    for j in closed_range(1, C):
                         # transition[i,e,u,j] <=> OR_{v|...}( color[parent[v],i] & color[v,j] )
-                        t = transition[i][e][u][j]
                         rhs = []
                         for v in closed_range(2, V):
-                            if tree.input_event[v] == e and tree.input_number[v] == u and tree.output_event[v] != 0:
+                            if tree.output_event[v] != 0 and tree.input_event[v] == e and tree.input_number[v] == u:
                                 # aux <=> color[parent[v],i] & color[v,j]
                                 aux = self.new_variable()
-                                self.add_clause(aux, -color[tree.parent[v]][i], -color[v][j])
-                                self.add_clause(color[tree.parent[v]][i], -aux)
-                                self.add_clause(color[v][j], -aux)
-
-                                self.add_clause(t, -aux)
+                                p = tree.parent[v]
+                                iff_and(aux, (color[p][i], color[v][j]))
                                 rhs.append(aux)
-                        self.add_clause(-t, *rhs)
+                        iff_or(transition[i][e][u][j], rhs)
 
-        # 2.2. Loop-transitions
-        for v in closed_range(2, V):
-            for c in closed_range(1, C):
-                # IF toe[v]=0 THEN color[v,c] => transition[c,tie[v],tin[v],c]
-                if tree.output_event[v] == 0:
-                    self.add_clause(-color[v][c], transition[c][tree.input_event[v]][tree.input_number[v]][c])
+        # 2.2. Passive
+        for v in closed_range(1, V):
+            if tree.output_event[v] == 0:
+                for c in closed_range(1, C):
+                    # color[v,c] => transition[c,tie[v],tin[v],0]
+                    e = tree.input_event[v]
+                    u = tree.input_number[v]
+                    imply(color[v][c], transition[c][e][u][0])
 
         log_debug(f'2. Clauses: {so_far()}', symbol='STAT')
 
@@ -475,11 +464,9 @@ class Instance:
         # 4.2. Output event is the same as in the tree
         for v in closed_range(2, V):
             o = tree.output_event[v]
-            for c in closed_range(1, C):
-                if o == 0:  # IF toe[v]=0 THEN color[v,c] => output_event[c,toe[tpa[v]]]
-                    self.add_clause(-color[v][c], output_event[c][tree.output_event[tree.previous_active[v]]])
-                else:  # IF toe[v]!=0 THEN color[v,c] => output_event[c,toe[v]]
-                    self.add_clause(-color[v][c], output_event[c][o])
+            if o != 0:
+                for c in closed_range(1, C):
+                    imply(color[v][c], output_event[c][o])
 
         log_debug(f'4. Clauses: {so_far()}', symbol='STAT')
 
@@ -498,93 +485,53 @@ class Instance:
             output_event=output_event,
             algorithm_0=algorithm_0,
             algorithm_1=algorithm_1,
-            tr=None,
-            totalizers=None
+            totalizer=None
         )
 
         log_debug(f'Done generating base reduction ({self.number_of_variables} variables, {self.number_of_clauses} clauses) in {time.time() - time_start_base:.2f} s')
 
-    def generate_pre(self):
+    def generate_totalizer(self):
         C = self.C
 
-        log_debug(f'Generating transitions existance and pre-cardinality constraints for C = {C}...')
-        time_start_pre = time.time()
+        log_debug(f'Generating totalizer for C={C}...')
+        time_start_totalizer = time.time()
         _nv = self.number_of_variables
         _nc = self.number_of_clauses
         filename = self.get_filename_pre()
         self.maybe_new_stream(filename)
 
-        # =-=-=-=-=-=
-        #  CONSTANTS
-        # =-=-=-=-=-=
-
         tree = self.scenario_tree
         E = tree.E
         U = tree.U
 
-        # =-=-=-=-=-=
-        #  VARIABLES
-        # =-=-=-=-=-=
-
-        transition = self.reduction.transition
-        tr = self.declare_array(C, C)
-        # nut = self.declare_array(C, C, C, with_zero=True)
-
-        # =-=-=-=-=-=-=
-        #  CONSTRAINTS
-        # =-=-=-=-=-=-=
-
-        # Transitions existance
-        for i in closed_range(1, C):
-            for j in closed_range(1, C):
-                if i == j:
-                    continue
-                # tr_{i,j} <=> OR_{e,u}(transition_{i,e,u,j})
-                rhs = []
-                for e in closed_range(1, E):
-                    for u in closed_range(1, U):
-                        t = transition[i][e][u][j]
-                        self.add_clause(-t, tr[i][j])
-                        rhs.append(t)
-                self.add_clause(*rhs, -tr[i][j])
-
-        # Pretend that self-loops do not exist
-        for c in closed_range(1, C):
-            self.add_clause(-tr[c][c])
-
-        totalizers = [None] + [self.get_totalizer(tr[i][1:]) for i in closed_range(1, C)]
-
-        # =-=-=-=-=
-        #   FINISH
-        # =-=-=-=-=
+        totalizer = self.get_totalizer([-self.reduction.transition[c][e][u][0]
+                                        for c in closed_range(1, C)
+                                        for e in closed_range(1, E)
+                                        for u in closed_range(1, U)])
 
         self.maybe_close_stream(filename)
-        self.reduction = self.reduction._replace(tr=tr, totalizers=totalizers)
+        self.reduction = self.reduction._replace(totalizer=totalizer)
 
-        log_debug(f'Done generating pre ({self.number_of_variables-_nv} variables, {self.number_of_clauses-_nc} clauses) in {time.time() - time_start_pre:.2f} s')
+        log_debug(f'Done generating totalizer ({self.number_of_variables-_nv} variables, {self.number_of_clauses-_nc} clauses) in {time.time() - time_start_totalizer:.2f} s')
 
-    def generate_cardinality(self):
-        C = self.C
-        K = self.K
-
-        log_debug(f'Generating transitions cardinality for K={K}...')
+    def generate_comparator(self):
+        log_debug(f'Generating comparator for C={self.C}, K={self.K}...')
         time_start_cardinality = time.time()
         _nc = self.number_of_clauses
         filename = self.get_filename_cardinality()
         self.maybe_new_stream(filename)
 
-        K_max = C
+        tree = self.scenario_tree
+        K_max = self.C * tree.E * tree.U
 
-        # Transitions cardinality (leq K): "forbid all states to have K+1 or more transitions"
-        for c in closed_range(1, C):
-            for k in reversed(closed_range(K + 1, K_max)):
-                self.add_clause(-self.reduction.totalizers[c][k - 1])  # Note: each totalizer is 0-based!
+        # sum(E) <= K   <=>   sum(E) < K + 1
+        for k in reversed(closed_range(self.K + 1, K_max)):
+            self.add_clause(-self.reduction.totalizer[k - 1])  # Note: totalizer is 0-based!
 
         self.maybe_close_stream(filename)
-
         log_debug(f'Done generating transitions cardinality ({self.number_of_clauses-_nc} clauses) in {time.time() - time_start_cardinality:.2f} s')
 
-    def generate_cardinality_isolver(self):
+    def generate_comparator_isolver(self):
         C = self.C
         K = self.K
 
@@ -685,14 +632,18 @@ class Instance:
                                      for item in subdata[1:])
                              for subdata in data[1:]]
 
+        transition = wrapper_int(self.reduction.transition)
         assignment = self.Assignment(
             color=wrapper_int(self.reduction.color),
-            transition=wrapper_int(self.reduction.transition),
+            transition=transition,
             output_event=wrapper_int(self.reduction.output_event),
             algorithm_0=wrapper_algo(self.reduction.algorithm_0),
             algorithm_1=wrapper_algo(self.reduction.algorithm_1),
             C=self.C,
-            K=self.K,
+            K=sum(transition[c][e][u] != 0
+                  for c in closed_range(1, self.C)
+                  for e in closed_range(1, self.scenario_tree.E)
+                  for u in closed_range(1, self.scenario_tree.U)),
         )
 
         # ===========
@@ -701,22 +652,17 @@ class Instance:
         #     log_debug(f'{assignment.color[v]: ^5} {self.scenario_tree.output_event[v]: ^3}')
         # ===========
 
-        # ===============
-        if self.reduction.tr is not None:
-            C = self.C
-            tr = wrapper_bool(self.reduction.tr)
-            log_debug('transition existance:')
-            for i in closed_range(1, C):
-                log_debug(f' >  {i} -> {[j for j in closed_range(1, C) if tr[i][j]]}', symbol=None)
+        for u in closed_range(1, self.scenario_tree.U):
+            inputs = ''.join({True: '1', False: '0'}[q] for q in self.scenario_tree.unique_input[u][1:])
+            log_debug(f'tree.unique_input[u={u: >2}] = {inputs}')
 
-            max_K = max(len([j for j in closed_range(1, C) if tr[i][j]]) for i in closed_range(1, C))
-            log_debug(f'Max K: {max_K}')
-            if max_K < self.K:
-                log_warn(f'max_K({max_K}) < self.K({self.K}), consider using K = {max_K}')
-            assert max_K <= self.K
-        # ===============
+        for c in closed_range(1, self.C):
+            for e in closed_range(1, self.scenario_tree.E):
+                for u in closed_range(1, self.scenario_tree.U):
+                    if assignment.transition[c][e][u] != 0:
+                        log_debug(f'transition over (e, u)=({e}, {u}) from {c} -> {assignment.transition[c][e][u]}')
 
-        log_debug(f'Done building assignment in {time.time() - time_start_assignment:.2f} s')
+        log_debug(f'Done building assignment (K={assignment.K}) in {time.time() - time_start_assignment:.2f} s')
         return assignment
 
     def maybe_k(self, K='default'):
@@ -797,8 +743,8 @@ class Instance:
             for e in closed_range(1, E):
                 for u in closed_range(1, U):
                     dest = assignment.transition[c][e][u]
-                    if dest != c:
-                        guard = FullGuard(unique_input[u])
+                    if dest != 0:
+                        guard = Guard.from_input(unique_input[u])
                         # log_debug(f'GUARD from {c} to {dest} by e={e}, u={u}: {guard}')
                         efsm.add_transition(c, dest, input_events[e - 1], guard)
                     # else:
@@ -808,5 +754,5 @@ class Instance:
         efsm.pprint()
         # =======================
 
-        log_debug(f'Done building EFSM with {efsm.number_of_states} states, {efsm.number_of_transitions} transitions in {time.time() - time_start_build:.2f} s')
+        log_debug(f'Done building EFSM with {efsm.number_of_states} states, {efsm.number_of_transitions} transitions and {efsm.number_of_nodes} nodes in {time.time() - time_start_build:.2f} s')
         return efsm

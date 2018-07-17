@@ -1,19 +1,14 @@
-__all__ = ('Instance', )
-
 import os
 import time
-import regex
-import shutil
-import tempfile
 import pickle
 import itertools
 import subprocess
-from io import StringIO
-from collections import namedtuple
 
 from .efsm import *
 from .utils import *
 from .printers import *
+
+__all__ = ['Instance']
 
 
 class Instance:
@@ -71,7 +66,7 @@ class Instance:
             K = len(efsm.states[c].transitions)
             for k in closed_range(1, K):
                 log_info(f'Solving state {c}/{C}, transition {k}/{K}')
-                for P in itertools.islice(itertools.count(1), 10):
+                for P in itertools.islice(itertools.count(1), 20):
                     log_info(f'Trying P = {P}')
                     filename = f'{self.filename_prefix}_C{C}_c{c}_K{K}_k{k}_P{P}.dzn'
                     with open(filename, 'w') as f:
@@ -85,7 +80,7 @@ class Instance:
                         f.write(f'tran_id = [{", ".join(map(str, history[c].values()))}];\n')
                         f.write(f'inputs = [| ')
                         f.write(',\n          | '.join(', '.join({'0': 'false', '1': ' true'}[v] for v in iv) for iv in history[c]))
-                        f.write(f' |]\n')
+                        f.write(f' |];\n')
 
                     cmd = f'{self.mzn_solver} minizinc/one-transition-hybrid.mzn {filename}'
                     # cmd = f'mzn2fzn minizinc/one-transition-hybrid.mzn {filename} -O x.ozn -o x.fzn && fzn-gecode x.fzn | solns2out x.ozn && rm x.fzn x.ozn'
@@ -126,7 +121,7 @@ class Instance:
                         # log_debug(f'Parent: {parent}')
                         # log_debug(f'Left child: {child_left}')
                         child_right = [None] + [child_left[p] + 1 if nodetype[p] in (1, 2) else 0 for p in closed_range(1, P)]
-                        guard = Guard(nodetype, terminal, parent, child_left, child_right)
+                        guard = ParseTreeGuard(nodetype, terminal, parent, child_left, child_right)
                         efsm.states[c].transitions[k - 1].guard = guard
                         break
                 else:

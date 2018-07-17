@@ -1,6 +1,6 @@
-__all__ = ('log_debug', 'log_info', 'log_success', 'log_warn', 'log_error', 'log_br')
-
 import click
+
+__all__ = ['log_debug', 'log_info', 'log_success', 'log_warn', 'log_error', 'log_br']
 
 
 def log(text, symbol, *, fg=None, bg=None, bold=None, nl=True):
