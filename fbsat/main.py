@@ -28,7 +28,8 @@ CONTEXT_SETTINGS = dict(
 @click.argument('strategy', type=click.Choice(['old-basic', 'old-basic2', 'old-minimize',
                                                'old-combined', 'old-combined2', 'old-combined3',
                                                'basic', 'basic-min',
-                                               'complete', 'complete-min']))
+                                               'complete', 'complete-min',
+                                               'minimize']))
 @click.option('-i', '--scenarios', 'filename_scenarios', metavar='<path/->', required=True,
               type=click.Path(exists=True, allow_dash=True),
               help='File with scenarios')
@@ -222,18 +223,6 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
                       outdir=outdir)
         task = MinimalBasicAutomatonTask(**config)
         minimal_basic_automaton = task.run()
-    elif strategy == 'minimize':
-        log_info('MinimizeAllGuards strategy')
-        if K is not None:
-            log_warn(f'Ignoring specified K={K}')
-        config = dict(scenario_tree=scenario_tree,
-                      C=C, T=T,
-                      use_bfs=use_bfs,
-                      solver_cmd=sat_solver,
-                      write_strategy=write_strategy,
-                      outdir=outdir)
-        task = MinimizeAllGuardsTask(**config)
-        minimized_automaton = task.run()
     elif strategy == 'complete':
         log_info('Complete strategy')
         assert C is not None
@@ -256,6 +245,17 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
                       outdir=outdir)
         task = MinimalCompleteAutomatonTask(**config)
         minimal_complete_automaton = task.run()
+    elif strategy == 'minimize':
+        log_info('MinimizeAllGuards strategy')
+        if K is not None:
+            log_warn(f'Ignoring specified K={K}')
+        config = dict(scenario_tree=scenario_tree,
+                      C=C, T=T,
+                      use_bfs=use_bfs,
+                      solver_cmd=sat_solver,
+                      outdir=outdir)
+        task = MinimizeAllGuardsTask(**config)
+        minimized_automaton = task.run()
 
     log_br()
     log_success(f'All done in {time.time() - time_start:.2f} s')
