@@ -92,9 +92,14 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
         filename_prefix, outdir, C, K, P, N, T, Cmax, is_minimize, is_incremental, is_reuse,
         use_bfs, sat_solver, sat_isolver, mzn_solver, write_strategy, automaton):
     log_info('Welcome!')
-    log_br()
     time_start = time.time()
+    # =====================
+    # import base64
+    # import zlib
+    # log_debug(zlib.decompress(base64.b64decode(b'eNqVUUEOwCAIu/MKnrvjSMaWLOFzvmRqFgcKixoOWlppFTCvdG5O8eWCIRunubUHajIfiXdV0uOdo3k+3xZpQgEvebbseS4yWXilgpOKR35YGbHRuMEp4MfDSmc5Eyn1z4jXo6A+mX9x0fphn1Zf0/YPKdybbQ==')).decode(), symbol=None)
+    # =====================
 
+    log_br()
     log_info('Building scenario tree...')
     time_start_tree = time.time()
     scenario_tree = ScenarioTree.from_files(filename_scenarios, filename_predicate_names, filename_output_variable_names)
