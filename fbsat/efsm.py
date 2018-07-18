@@ -2,8 +2,6 @@ import time
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 
-from lxml import etree
-
 from .utils import *
 from .printers import *
 
@@ -392,6 +390,8 @@ class EFSM:
         return '\n'.join(lines)
 
     def get_fbt_string(self, tree):
+        from lxml import etree
+
         FBType = etree.Element('FBType')
 
         etree.SubElement(FBType, 'Identification', Standard='61499-2')
