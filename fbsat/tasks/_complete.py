@@ -3,18 +3,18 @@ import time
 from collections import namedtuple
 from functools import partial
 
-from ..utils import closed_range, s2b, parse_raw_assignment_int, parse_raw_assignment_bool, parse_raw_assignment_algo
-from ..solver import Solver
-from ..printers import log_debug, log_success, log_warn, log_br, log_info, log_error
-from . import BasicAutomatonTask, MinimalBasicAutomatonTask
+from . import BasicAutomatonTask, MinimalBasicAutomatonTask, Task
 from ..efsm import EFSM
+from ..printers import log_br, log_debug, log_error, log_info, log_success, log_warn
+from ..solver import StreamSolver
+from ..utils import closed_range, parse_raw_assignment_algo, parse_raw_assignment_bool, parse_raw_assignment_int, s2b
 
 __all__ = ['CompleteAutomatonTask']
 
 VARIABLES = 'color transition output_event algorithm_0 algorithm_1 nodetype terminal child_left child_right parent value child_value_left child_value_right first_fired not_fired'
 
 
-class CompleteAutomatonTask:
+class CompleteAutomatonTask(Task):
 
     Reduction = namedtuple('Reduction', VARIABLES + ' totalizer')
     Assignment = namedtuple('Assignment', VARIABLES + ' C K T P N')
@@ -23,7 +23,7 @@ class CompleteAutomatonTask:
     # tests-39: C=8, K=8, (T=16), P=5, N=25 (no-distinct)
     # tests-39: C=8, K=8, (T=15), P=5, N=28 (distinct)
 
-    def __init__(self, scenario_tree, *, C, K=None, P, use_bfs=True, solver_cmd=None, write_strategy=None, outdir=''):
+    def __init__(self, scenario_tree, *, C, K=None, P, use_bfs=True, solver_cmd=None, outdir=''):
         if K is None:
             K = C
 
@@ -33,15 +33,17 @@ class CompleteAutomatonTask:
         self.P = P
         self.use_bfs = use_bfs
         self.outdir = outdir
-        self.basic_config = dict(use_bfs=use_bfs,
-                                 solver_cmd=solver_cmd,
-                                 write_strategy=write_strategy,
-                                 outdir=outdir)
-        self.config = {'cmd': solver_cmd}
-        if write_strategy is not None:
-            self.config['write_strategy'] = write_strategy
-
+        self.subtask_config = dict(use_bfs=use_bfs,
+                                   solver_cmd=solver_cmd,
+                                   outdir=outdir)
+        self.solver_config = dict(cmd=solver_cmd)
         self._new_solver()
+
+    def _new_solver(self):
+        self._is_base_declared = False
+        self._is_totalizer_declared = False
+        self._N_defined = None
+        self.solver = StreamSolver(**self.solver_config)
 
     def get_stem(self, N=None):
         C = self.C
@@ -62,13 +64,6 @@ class CompleteAutomatonTask:
     @property
     def number_of_clauses(self):
         return self.solver.number_of_clauses
-
-    def _new_solver(self):
-        self._is_base_declared = False
-        self._is_totalizer_declared = False
-        self._N_defined = None
-        self.solver = Solver(filename_prefix=self.get_filename_prefix(),
-                             **self.config)
 
     def run(self, N=None, *, fast=False):
         # CompleteAutomatonTask: build complete automaton for C, K, P, (N)
@@ -309,7 +304,6 @@ class CompleteAutomatonTask:
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for u in closed_range(1, U):
-                    # ALO(first_fired[c][e][u])
                     AMO(first_fired[c][e][u])
 
         # 5.1. (not_fired definition)

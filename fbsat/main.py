@@ -212,7 +212,6 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
                       C=C, K=K,
                       use_bfs=use_bfs,
                       solver_cmd=sat_solver,
-                      write_strategy=write_strategy,
                       outdir=outdir)
         task = BasicAutomatonTask(**config)
         basic_automaton = task.run(T)
@@ -221,10 +220,9 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
         if K is not None:
             log_warn(f'Ignoring specified K={K}')
         config = dict(scenario_tree=scenario_tree,
-                      C=C, T=T,
+                      C=C, K=K, T=T,
                       use_bfs=use_bfs,
                       solver_cmd=sat_solver,
-                      write_strategy=write_strategy,
                       outdir=outdir)
         task = MinimalBasicAutomatonTask(**config)
         minimal_basic_automaton = task.run()
@@ -236,7 +234,6 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
                       C=C, K=K, P=P,
                       use_bfs=use_bfs,
                       solver_cmd=sat_solver,
-                      write_strategy=write_strategy,
                       outdir=outdir)
         task = CompleteAutomatonTask(**config)
         complete_automaton = task.run(N)
@@ -246,7 +243,6 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
                       C=C, K=K, P=P, N=N,
                       use_bfs=use_bfs,
                       solver_cmd=sat_solver,
-                      write_strategy=write_strategy,
                       outdir=outdir)
         task = MinimalCompleteAutomatonTask(**config)
         minimal_complete_automaton = task.run()

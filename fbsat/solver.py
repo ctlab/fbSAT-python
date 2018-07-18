@@ -1,69 +1,37 @@
-from io import StringIO
-import time
-import regex as re
-import subprocess
 import shutil
+import subprocess
+import time
+from abc import ABC, abstractmethod
 from collections import deque
+from io import StringIO
 
-from .utils import *
-from .printers import *
+from .printers import log_debug, log_error, log_success
+from .utils import closed_range
 
-__all__ = ['Solver']
+__all__ = ['StreamSolver']
 
 
-class Solver:
+class Solver(ABC):
 
-    def __init__(self, cmd, write_strategy='StringIO', filename_prefix=None):
-        assert cmd is not None
-        self.cmd = cmd
-        self.write_strategy = write_strategy
-        if write_strategy == 'direct':
-            raise NotImplementedError
-            assert filename_prefix is not None
-            self.filename = f'{filename_prefix}.cnf'
-            self.stream = open(self.filename, 'w+')
-        elif write_strategy == 'StringIO':
-            self.stream = StringIO()
-        self.number_of_variables = 0
-        self.number_of_clauses = 0
-
+    @abstractmethod
     def new_variable(self):
-        self.number_of_variables += 1
-        return self.number_of_variables
+        pass
 
+    @abstractmethod
     def add_clause(self, *vs):
-        self.number_of_clauses += 1
-        self.stream.write(' '.join(map(str, vs)) + ' 0\n')
+        pass
+
+    @abstractmethod
+    def solve(self):
+        pass
 
     def declare_array(self, *dims, with_zero=False):
-        def last():
+        if len(dims) == 1:
             if with_zero:
-                return [self.new_variable() for _ in closed_range(0, dims[-1])]
+                return [self.new_variable() for _ in closed_range(0, dims[0])]
             else:
-                return [None] + [self.new_variable() for _ in closed_range(1, dims[-1])]
-        n = len(dims)
-        if n == 1:
-            return last()
-        elif n == 2:
-            return [None] + [last()
-                             for _ in closed_range(1, dims[0])]
-        elif n == 3:
-            return [None] + [[None] + [last()
-                                       for _ in closed_range(1, dims[1])]
-                             for _ in closed_range(1, dims[0])]
-        elif n == 4:
-            return [None] + [[None] + [[None] + [last()
-                                                 for _ in closed_range(1, dims[2])]
-                                       for _ in closed_range(1, dims[1])]
-                             for _ in closed_range(1, dims[0])]
-        elif n == 5:
-            return [None] + [[None] + [[None] + [[None] + [last()
-                                                           for _ in closed_range(1, dims[3])]
-                                                 for _ in closed_range(1, dims[2])]
-                                       for _ in closed_range(1, dims[1])]
-                             for _ in closed_range(1, dims[0])]
-        else:
-            raise ValueError(f'unsupported number of dimensions ({n})')
+                return [None] + [self.new_variable() for _ in closed_range(1, dims[0])]
+        return [None] + [self.declare_array(*dims[1:], with_zero=with_zero) for _ in range(dims[0])]
 
     def ALO(self, data):
         lower = 1 if data[0] is None else 0
@@ -151,24 +119,41 @@ class Solver:
         assert len(_E) == len(_S)
         return _S
 
+
+class StreamSolver(Solver):
+
+    def __init__(self, cmd, filename_prefix=None):
+        self.cmd = cmd
+        self.filename_prefix = filename_prefix
+        self.stream = StringIO()
+        self.number_of_variables = 0
+        self.number_of_clauses = 0
+
+    def new_variable(self):
+        self.number_of_variables += 1
+        return self.number_of_variables
+
+    def add_clause(self, *vs):
+        self.number_of_clauses += 1
+        self.stream.write(' '.join(map(str, vs)) + ' 0\n')
+
     def solve(self):
         log_debug(f'Solving with "{self.cmd}"...')
         time_start_solve = time.time()
+        is_sat = None
+        raw_assignment = [None]  # 1-based
+
         with subprocess.Popen(self.cmd, shell=True, universal_newlines=True,
                               stdin=subprocess.PIPE, stdout=subprocess.PIPE) as p:
             self.stream.seek(0)
             shutil.copyfileobj(self.stream, p.stdin)
             p.stdin.close()
 
-            is_sat = None
-            raw_assignment = [None]  # 1-based
-            pattern = re.compile(r'-?\d+')
             for line in map(str.rstrip, p.stdout):
                 if line == 's SATISFIABLE':
                     is_sat = True
-                elif line.startswith('v'):
-                    for m in pattern.finditer(line):
-                        value = int(m.group(0))
+                elif line.startswith('v '):
+                    for value in map(int, line[2:].split()):
                         if value == 0:
                             break
                         assert abs(value) == len(raw_assignment)

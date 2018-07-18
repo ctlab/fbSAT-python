@@ -1,34 +1,27 @@
 import os
 import time
-from collections import namedtuple
-from functools import partial
 
-from ..utils import closed_range, s2b, parse_raw_assignment_int, parse_raw_assignment_bool, parse_raw_assignment_algo
-from ..solver import Solver
-from ..printers import log_debug, log_success, log_warn, log_br, log_info, log_error
-from . import BasicAutomatonTask, MinimalBasicAutomatonTask, CompleteAutomatonTask
+from . import BasicAutomatonTask, CompleteAutomatonTask, MinimalBasicAutomatonTask, Task
 from ..efsm import EFSM
+from ..printers import log_br, log_debug, log_error, log_info, log_success, log_warn
+from ..solver import Solver
+from ..utils import closed_range, parse_raw_assignment_algo, parse_raw_assignment_bool, parse_raw_assignment_int, s2b
 
 __all__ = ['MinimalCompleteAutomatonTask']
 
 
-class MinimalCompleteAutomatonTask:
+class MinimalCompleteAutomatonTask(Task):
 
-    def __init__(self, scenario_tree, *, C=None, K=None, P=None, N=None, use_bfs=True, solver_cmd=None, write_strategy=None, outdir=''):
+    def __init__(self, scenario_tree, *, C=None, K=None, P=None, N=None, use_bfs=True, solver_cmd=None, outdir=''):
         self.scenario_tree = scenario_tree
         self.C = C
         self.K = K
         self.P = P
         self.N_init = N
-        self.use_bfs = use_bfs
         self.outdir = outdir
-        self.basic_config = dict(use_bfs=use_bfs,
-                                 solver_cmd=solver_cmd,
-                                 write_strategy=write_strategy,
-                                 outdir=outdir)
-        self.config = {'cmd': solver_cmd}
-        if write_strategy is not None:
-            self.config['write_strategy'] = write_strategy
+        self.subtask_config = dict(use_bfs=use_bfs,
+                                   solver_cmd=solver_cmd,
+                                   outdir=outdir)
 
     def get_stem(self, C, K, P, N=None):
         if N is None:
@@ -54,28 +47,27 @@ class MinimalCompleteAutomatonTask:
 
         if self.C is None:
             log_debug('MinimalCompleteAutomatonTask: searching for minimal C...')
-            task = MinimalBasicAutomatonTask(self.scenario_tree, **self.basic_config)
+            task = MinimalBasicAutomatonTask(self.scenario_tree, **self.subtask_config)
             assignment = task.run(fast=True, only_C=True)
             C = assignment.C
-            log_debug(f'MinimalCompleteAutomatonTask: found minimal C={C}...')
+            log_debug(f'MinimalCompleteAutomatonTask: found minimal C={C}')
         else:
             C = self.C
-            log_debug(f'MinimalCompleteAutomatonTask: using specified C={C}...')
+            log_debug(f'MinimalCompleteAutomatonTask: using specified C={C}')
 
         if self.K is None:
             K = C
-            log_debug(f'Using K=C={K}')
+            log_debug(f'MinimalCompleteAutomatonTask: using K=C={K}')
         else:
             K = self.K
-            log_debug(f'Using specified K={K}')
+            log_debug(f'MinimalCompleteAutomatonTask: using specified K={K}')
 
         if self.P is None:
-            log_br()
-            log_info('MinimalCompleteAutomatonTask: searching for P...')
+            log_debug('MinimalCompleteAutomatonTask: searching for P...')
             for P in [1, 3, 5, 7, 9, 15]:
-                # log_br()
-                log_info(f'Trying P = {P}...')
-                task = CompleteAutomatonTask(self.scenario_tree, C=C, K=K, P=P, **self.basic_config)
+                log_br()
+                log_info(f'Trying P={P}...')
+                task = CompleteAutomatonTask(self.scenario_tree, C=C, K=K, P=P, **self.subtask_config)
                 assignment = task.run(self.N_init, fast=True)
 
                 if assignment:
@@ -87,7 +79,7 @@ class MinimalCompleteAutomatonTask:
             P = self.P
             log_br()
             log_info(f'MinimalCompleteAutomatonTask: pre-solving for specified P={P}...')
-            task = CompleteAutomatonTask(self.scenario_tree, C=C, K=K, P=P, **self.basic_config)
+            task = CompleteAutomatonTask(self.scenario_tree, C=C, K=K, P=P, **self.subtask_config)
             assignment = task.run(self.N_init, fast=True)
             if assignment:
                 log_success(f'MinimalCompleteAutomatonTask: pre-solved for P={P}')

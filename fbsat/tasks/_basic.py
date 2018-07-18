@@ -3,22 +3,23 @@ import time
 from collections import namedtuple
 from functools import partial
 
-from ..utils import closed_range, parse_raw_assignment_int, parse_raw_assignment_bool, parse_raw_assignment_algo
-from ..printers import log_debug, log_success, log_error, log_br, log_info, log_warn
-from ..solver import Solver
+from . import Task
 from ..efsm import EFSM
+from ..printers import log_br, log_debug, log_error, log_info, log_success
+from ..solver import StreamSolver
+from ..utils import closed_range, parse_raw_assignment_algo, parse_raw_assignment_bool, parse_raw_assignment_int
 
 __all__ = ['BasicAutomatonTask']
 
 VARIABLES = 'color transition output_event algorithm_0 algorithm_1 first_fired not_fired'
 
 
-class BasicAutomatonTask:
+class BasicAutomatonTask(Task):
 
     Reduction = namedtuple('Reduction', VARIABLES + ' totalizer')
     Assignment = namedtuple('Assignment', VARIABLES + ' C K T')
 
-    def __init__(self, scenario_tree, C, K=None, *, use_bfs=True, solver=None, solver_cmd=None, write_strategy=None, outdir=''):
+    def __init__(self, scenario_tree, *, C, K=None, use_bfs=True, solver_cmd=None, outdir=''):
         if K is None:
             K = C
 
@@ -27,16 +28,12 @@ class BasicAutomatonTask:
         self.K = K
         self.use_bfs = use_bfs
         self.outdir = outdir
-        if solver is not None:
-            self.solver = solver
-        else:
-            assert solver_cmd is not None
-            config = {'cmd': solver_cmd}
-            if write_strategy is not None:
-                config['write_strategy'] = write_strategy
-            config['filename_prefix'] = self.get_filename_prefix()
-            self.solver = Solver(**config)
+        self.solver_config = dict(cmd=solver_cmd)
+        self._new_solver()
 
+    def _new_solver(self):
+        # TODO: pass some filename_prefix to solver
+        self.solver = StreamSolver(**self.solver_config)
         self._is_base_declared = False
         self._is_totalizer_declared = False
         self._T_defined = None
@@ -447,12 +444,14 @@ class BasicAutomatonTask:
                   for k in closed_range(1, self.K)),
         )
 
+        # ==================
         Ks = []
         for c in closed_range(1, self.C):
             for e in closed_range(1, self.scenario_tree.E):
                 Ks.append(sum(transition[c][e][k] != 0
                               for k in closed_range(1, self.K)))
         log_debug(f'max(K) = {max(Ks)}')
+        # ==================
 
         log_debug(f'Done building assignment (T={assignment.T}) in {time.time() - time_start_assignment:.2f} s')
         return assignment

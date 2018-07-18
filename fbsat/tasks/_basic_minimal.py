@@ -1,30 +1,26 @@
+import itertools
 import os
 import time
-import itertools
-from collections import namedtuple
 
-from ..utils import closed_range
+from . import BasicAutomatonTask, Task
 from ..efsm import EFSM
-from ..printers import log_debug, log_success, log_warn, log_br, log_info, log_error
-from . import BasicAutomatonTask
+from ..printers import log_br, log_debug, log_error, log_info, log_success, log_warn
+from ..utils import closed_range
 
 __all__ = ['MinimalBasicAutomatonTask']
 
 
-class MinimalBasicAutomatonTask:
+class MinimalBasicAutomatonTask(Task):
 
-    def __init__(self, scenario_tree, C=None, T=None, *, use_bfs=True, solver_cmd=None, write_strategy=None, outdir=''):
+    def __init__(self, scenario_tree, *, C=None, K=None, T=None, use_bfs=True, solver_cmd=None, outdir=''):
         self.scenario_tree = scenario_tree
-        if C:
-            self.C_start = C
-        else:
-            self.C_start = 1
+        self.C = C
+        self.K = K
         self.T_init = T
         self.outdir = outdir
-        self.basic_config = dict(use_bfs=use_bfs,
-                                 solver_cmd=solver_cmd,
-                                 write_strategy=write_strategy,
-                                 outdir=outdir)
+        self.subtask_config = dict(use_bfs=use_bfs,
+                                   solver_cmd=solver_cmd,
+                                   outdir=outdir)
 
     def get_stem(self, C, K, T):
         return f'minimal_basic_{self.scenario_tree.scenarios_stem}_C{C}_K{K}_T{T}'
@@ -35,27 +31,36 @@ class MinimalBasicAutomatonTask:
     def run(self, *, fast=False, only_C=False):
         log_debug(f'MinimalBasicAutomatonTask: running...')
         time_start_run = time.time()
-        best = None
 
-        for C in itertools.islice(itertools.count(self.C_start), 10):
-            log_br()
-            log_info(f'Trying C = {C}')
-            task = BasicAutomatonTask(self.scenario_tree, C, **self.basic_config)
-            assignment = task.run(self.T_init, fast=True)
-
-            if assignment:
-                if only_C:
+        if self.C is None:
+            log_debug('MinimalBasicAutomatonTask: searching for minimal C...')
+            for C in itertools.islice(itertools.count(1), 15):
+                log_br()
+                log_info(f'Trying C = {C}...')
+                task = BasicAutomatonTask(self.scenario_tree, C=C, K=self.K, **self.subtask_config)
+                assignment = task.run(self.T_init, fast=True)
+                if assignment:
                     best = assignment
-                else:
-                    while True:
-                        best = assignment
-                        T = best.T - 1
-                        log_br()
-                        log_info(f'Trying T = {T}...')
-                        assignment = task.run(T, fast=True)
-                        if assignment is None:
-                            break
-                break
+                    log_debug(f'MinimalBasicAutomatonTask: found minimal C={C}')
+                    break
+            else:
+                log_error('MinimalBasicAutomatonTask: minimal C was not found')
+        else:
+            log_debug(f'MinimalBasicAutomatonTask: using specified C={self.C}')
+            task = BasicAutomatonTask(self.scenario_tree, C=self.C, K=self.K, **self.subtask_config)
+            best = task.run(self.T_init, fast=True)
+
+        if not only_C and assignment:
+            log_debug('MinimalBasicAutomatonTask: searching for minimal T...')
+            while True:
+                best = assignment
+                T = best.T - 1
+                log_br()
+                log_info(f'Trying T={T}...')
+                assignment = task.run(T, fast=True)
+                if assignment is None:
+                    log_debug(f'MinimalBasicAutomatonTask: found minimal T={best.T}')
+                    break
 
         if fast:
             log_debug(f'MinimalBasicAutomatonTask: done in {time.time() - time_start_run:.2f} s')
