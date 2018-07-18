@@ -16,7 +16,7 @@ from .utils import *
 from .printers import *
 from .solver import *
 from .tasks import *
-from version import __version__
+from .version import version as __version__
 
 CONTEXT_SETTINGS = dict(
     max_content_width=999,
