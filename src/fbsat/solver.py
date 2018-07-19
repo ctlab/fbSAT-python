@@ -8,7 +8,7 @@ from io import StringIO
 from .printers import log_debug, log_error, log_success
 from .utils import closed_range
 
-__all__ = ['StreamSolver']
+__all__ = ['StreamSolver', 'IncrementalSolver']
 
 
 class Solver(ABC):
@@ -168,3 +168,43 @@ class StreamSolver(Solver):
             return raw_assignment
         else:
             log_error(f'UNSAT in {time.time() - time_start_solve:.2f} s')
+
+class IncrementalSolver(Solver):
+
+    def __init__(self, cmd, filename_prefix=None):
+        # self.cmd = cmd
+        # self.filename_prefix = filename_prefix
+        self.process = subprocess.Popen(cmd, shell=True, universal_newlines=True,
+                                        stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        # self.stream = StringIO()
+        self.number_of_variables = 0
+        self.number_of_clauses = 0
+
+    def new_variable(self):
+        self.number_of_variables += 1
+        return self.number_of_variables
+
+    def add_clause(self, *vs):
+        self.number_of_clauses += 1
+        self.process.stdin.write(' '.join(map(str, vs)) + ' 0\n')
+
+    def solve(self):
+        log_debug(f'Solving with "{self.process.args}"...')
+        time_start_solve = time.time()
+        p = self.process
+        p.stdin.write('solve 0\n')  # TODO: pass timeout?
+        p.stdin.flush()
+        answer = p.stdout.readline().rstrip()
+
+        if answer == 'SAT':
+            log_success(f'SAT in {time.time() - time_start_solve:.2f} s')
+            line_assignment = p.stdout.readline().rstrip()
+            if line_assignment.startswith('v '):
+                raw_assignment = [None] + list(map(int, line_assignment[2:].split()))  # 1-based
+                return raw_assignment
+            else:
+                log_error('Error reading line with assignment')
+        elif answer == 'UNSAT':
+            log_error(f'UNSAT in {time.time() - time_start_solve:.2f} s')
+        elif answer == 'UNKNOWN':
+            log_error(f'UNKNOWN in {time.time() - time_start_solve:.2f} s')

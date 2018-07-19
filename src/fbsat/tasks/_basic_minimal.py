@@ -12,7 +12,7 @@ __all__ = ['MinimalBasicAutomatonTask']
 
 class MinimalBasicAutomatonTask(Task):
 
-    def __init__(self, scenario_tree, *, C=None, K=None, T=None, use_bfs=True, solver_cmd=None, outdir=''):
+    def __init__(self, scenario_tree, *, C=None, K=None, T=None, use_bfs=True, solver_cmd=None, is_incremental=False, outdir=''):
         self.scenario_tree = scenario_tree
         self.C = C
         self.K = K
@@ -20,6 +20,7 @@ class MinimalBasicAutomatonTask(Task):
         self.outdir = outdir
         self.subtask_config = dict(use_bfs=use_bfs,
                                    solver_cmd=solver_cmd,
+                                   is_incremental=is_incremental,
                                    outdir=outdir)
 
     def get_stem(self, C, K, T):
@@ -43,6 +44,8 @@ class MinimalBasicAutomatonTask(Task):
                     best = assignment
                     log_debug(f'MinimalBasicAutomatonTask: found minimal C={C}')
                     break
+                else:
+                    task.finalize()
             else:
                 log_error('MinimalBasicAutomatonTask: minimal C was not found')
         else:
@@ -61,6 +64,8 @@ class MinimalBasicAutomatonTask(Task):
                 if assignment is None:
                     log_debug(f'MinimalBasicAutomatonTask: found minimal T={best.T}')
                     break
+
+        task.finalize()
 
         if fast:
             log_debug(f'MinimalBasicAutomatonTask: done in {time.time() - time_start_run:.2f} s')

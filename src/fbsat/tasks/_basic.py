@@ -6,7 +6,7 @@ from functools import partial
 from . import Task
 from ..efsm import EFSM
 from ..printers import log_br, log_debug, log_error, log_info, log_success
-from ..solver import StreamSolver
+from ..solver import IncrementalSolver, StreamSolver
 from ..utils import closed_range, parse_raw_assignment_algo, parse_raw_assignment_bool, parse_raw_assignment_int
 
 __all__ = ['BasicAutomatonTask']
@@ -19,7 +19,7 @@ class BasicAutomatonTask(Task):
     Reduction = namedtuple('Reduction', VARIABLES + ' totalizer')
     Assignment = namedtuple('Assignment', VARIABLES + ' C K T')
 
-    def __init__(self, scenario_tree, *, C, K=None, use_bfs=True, solver_cmd=None, outdir=''):
+    def __init__(self, scenario_tree, *, C, K=None, use_bfs=True, solver_cmd=None, is_incremental=False, outdir=''):
         if K is None:
             K = C
 
@@ -28,15 +28,19 @@ class BasicAutomatonTask(Task):
         self.K = K
         self.use_bfs = use_bfs
         self.outdir = outdir
+        self.is_incremental = is_incremental
         self.solver_config = dict(cmd=solver_cmd)
         self._new_solver()
 
     def _new_solver(self):
-        # TODO: pass some filename_prefix to solver
-        self.solver = StreamSolver(**self.solver_config)
         self._is_base_declared = False
         self._is_totalizer_declared = False
         self._T_defined = None
+        # TODO: pass some filename_prefix to solver
+        if self.is_incremental:
+            self.solver = IncrementalSolver(**self.solver_config)
+        else:
+            self.solver = StreamSolver(**self.solver_config)
 
     def get_stem(self, T=None):
         C = self.C
@@ -82,6 +86,10 @@ class BasicAutomatonTask(Task):
             else:
                 log_error(f'Basic automaton was not found')
             return automaton
+
+    def finalize(self):
+        if self.is_incremental:
+            self.solver.process.kill()
 
     def _declare_base_reduction(self):
         if self._is_base_declared:

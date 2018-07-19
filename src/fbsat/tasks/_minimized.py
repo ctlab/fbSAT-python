@@ -1,14 +1,14 @@
 import os
-import time
 import subprocess
+import time
 from collections import namedtuple
 
 import pymzn
 
-from ..utils import closed_range, s2b
-from ..printers import log_debug, log_success, log_warn, log_br, log_info, log_error
 from . import BasicAutomatonTask, MinimalBasicAutomatonTask
 from ..efsm import ParseTreeGuard
+from ..printers import log_br, log_debug, log_error, log_info, log_success, log_warn
+from ..utils import closed_range, s2b
 
 __all__ = ['MinimizeAllGuardsTask']
 

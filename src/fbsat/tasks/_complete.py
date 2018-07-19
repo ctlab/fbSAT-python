@@ -3,11 +3,11 @@ import time
 from collections import namedtuple
 from functools import partial
 
-from . import BasicAutomatonTask, MinimalBasicAutomatonTask, Task
+from . import MinimalBasicAutomatonTask, Task
 from ..efsm import EFSM
-from ..printers import log_br, log_debug, log_error, log_info, log_success, log_warn
-from ..solver import StreamSolver
-from ..utils import closed_range, parse_raw_assignment_algo, parse_raw_assignment_bool, parse_raw_assignment_int, s2b
+from ..printers import log_br, log_debug, log_error, log_info, log_success
+from ..solver import IncrementalSolver, StreamSolver
+from ..utils import closed_range, parse_raw_assignment_algo, parse_raw_assignment_bool, parse_raw_assignment_int
 
 __all__ = ['CompleteAutomatonTask']
 
@@ -23,7 +23,7 @@ class CompleteAutomatonTask(Task):
     # tests-39: C=8, K=8, (T=16), P=5, N=25 (no-distinct)
     # tests-39: C=8, K=8, (T=15), P=5, N=28 (distinct)
 
-    def __init__(self, scenario_tree, *, C, K=None, P, use_bfs=True, solver_cmd=None, outdir=''):
+    def __init__(self, scenario_tree, *, C, K=None, P, use_bfs=True, solver_cmd=None, is_incremental=False, outdir=''):
         if K is None:
             K = C
 
@@ -33,9 +33,7 @@ class CompleteAutomatonTask(Task):
         self.P = P
         self.use_bfs = use_bfs
         self.outdir = outdir
-        self.subtask_config = dict(use_bfs=use_bfs,
-                                   solver_cmd=solver_cmd,
-                                   outdir=outdir)
+        self.is_incremental = is_incremental
         self.solver_config = dict(cmd=solver_cmd)
         self._new_solver()
 
@@ -43,7 +41,10 @@ class CompleteAutomatonTask(Task):
         self._is_base_declared = False
         self._is_totalizer_declared = False
         self._N_defined = None
-        self.solver = StreamSolver(**self.solver_config)
+        if self.is_incremental:
+            self.solver = IncrementalSolver(**self.solver_config)
+        else:
+            self.solver = StreamSolver(**self.solver_config)
 
     def get_stem(self, N=None):
         C = self.C
@@ -97,6 +98,10 @@ class CompleteAutomatonTask(Task):
             else:
                 log_error(f'Complete automaton was not found')
             return automaton
+
+    def finalize(self):
+        if self.is_incremental:
+            self.solver.process.kill()
 
     def _declare_base_reduction(self):
         if self._is_base_declared:
@@ -705,13 +710,13 @@ class CompleteAutomatonTask(Task):
         # A. Declare any ad-hoc you like
 
         # adhoc 1. Distinct transitions
-        for i in closed_range(1, C):
-            for e in closed_range(1, E):
-                for k in closed_range(1, K):
-                    # transition[i,e,k,j] => AND_{k_!=k}(~transition[i,e,k_,j])
-                    for j in closed_range(1, C):
-                        for k_ in closed_range(k + 1, K):
-                            imply(transition[i][e][k][j], -transition[i][e][k_][j])
+        # for i in closed_range(1, C):
+        #     for e in closed_range(1, E):
+        #         for k in closed_range(1, K):
+        #             # transition[i,e,k,j] => AND_{k_!=k}(~transition[i,e,k_,j])
+        #             for j in closed_range(1, C):
+        #                 for k_ in closed_range(k + 1, K):
+        #                     imply(transition[i][e][k][j], -transition[i][e][k_][j])
 
         # adhoc 2. (comb)
         for c in closed_range(1, C):

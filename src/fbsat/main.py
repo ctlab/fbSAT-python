@@ -215,6 +215,7 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
                       outdir=outdir)
         task = BasicAutomatonTask(**config)
         basic_automaton = task.run(T)
+        task.finalize()
     elif strategy == 'basic-min':
         log_info('MinimalBasic strategy')
         if K is not None:
@@ -234,15 +235,18 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
                       C=C, K=K, P=P,
                       use_bfs=use_bfs,
                       solver_cmd=sat_solver,
+                      is_incremental=is_incremental,
                       outdir=outdir)
         task = CompleteAutomatonTask(**config)
         complete_automaton = task.run(N)
+        task.finalize()
     elif strategy == 'complete-min':
         log_info('MinimalComplete strategy')
         config = dict(scenario_tree=scenario_tree,
                       C=C, K=K, P=P, N=N,
                       use_bfs=use_bfs,
                       solver_cmd=sat_solver,
+                      is_incremental=is_incremental,
                       outdir=outdir)
         task = MinimalCompleteAutomatonTask(**config)
         minimal_complete_automaton = task.run()

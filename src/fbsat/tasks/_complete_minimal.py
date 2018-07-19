@@ -1,18 +1,17 @@
 import os
 import time
 
-from . import BasicAutomatonTask, CompleteAutomatonTask, MinimalBasicAutomatonTask, Task
+from . import CompleteAutomatonTask, MinimalBasicAutomatonTask, Task
 from ..efsm import EFSM
-from ..printers import log_br, log_debug, log_error, log_info, log_success, log_warn
-from ..solver import Solver
-from ..utils import closed_range, parse_raw_assignment_algo, parse_raw_assignment_bool, parse_raw_assignment_int, s2b
+from ..printers import log_br, log_debug, log_error, log_info, log_success
+from ..utils import parse_raw_assignment_algo, parse_raw_assignment_bool, parse_raw_assignment_int, s2b
 
 __all__ = ['MinimalCompleteAutomatonTask']
 
 
 class MinimalCompleteAutomatonTask(Task):
 
-    def __init__(self, scenario_tree, *, C=None, K=None, P=None, N=None, use_bfs=True, solver_cmd=None, outdir=''):
+    def __init__(self, scenario_tree, *, C=None, K=None, P=None, N=None, use_bfs=True, solver_cmd=None, is_incremental=False, outdir=''):
         self.scenario_tree = scenario_tree
         self.C = C
         self.K = K
@@ -21,6 +20,7 @@ class MinimalCompleteAutomatonTask(Task):
         self.outdir = outdir
         self.subtask_config = dict(use_bfs=use_bfs,
                                    solver_cmd=solver_cmd,
+                                   is_incremental=is_incremental,
                                    outdir=outdir)
 
     def get_stem(self, C, K, P, N=None):
@@ -73,6 +73,8 @@ class MinimalCompleteAutomatonTask(Task):
                 if assignment:
                     log_success(f'MinimalCompleteAutomatonTask: found P={P}')
                     break
+                else:
+                    task.finalize()
             else:
                 log_error('MinimalCompleteAutomatonTask: P was not found')
         else:
@@ -93,6 +95,8 @@ class MinimalCompleteAutomatonTask(Task):
             log_br()
             log_info(f'Trying N = {N}...')
             assignment = task.run(N, fast=True)
+
+        task.finalize()
 
         if fast:
             log_debug(f'MinimalCompleteAutomatonTask: done in {time.time() - time_start_run:.2f} s')
