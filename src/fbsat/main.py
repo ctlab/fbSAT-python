@@ -126,7 +126,6 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
     log_br()
     if strategy == 'old-basic':
         log_info('Old Basic strategy')
-        assert C is not None
         config = dict(scenario_tree=scenario_tree,
                       C=C, K=K, C_max=Cmax,
                       is_minimize=is_minimize,
@@ -139,7 +138,6 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
         InstanceBasic(**config).run()
     elif strategy == 'old-basic2':
         log_info('Old Basic2 strategy')
-        assert C is not None
         config = dict(scenario_tree=scenario_tree,
                       C=C, K=K, C_max=Cmax,
                       is_minimize=is_minimize,
@@ -181,8 +179,6 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
         InstanceCombined(**config).run()
     elif strategy == 'old-combined2':
         log_info('Old Combined2 strategy')
-        assert C is not None
-        assert K is not None
         config = dict(scenario_tree=scenario_tree,
                       C=C, K=K, P=P, N=N,
                       is_minimize=is_minimize,
@@ -195,7 +191,6 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
         InstanceCombined2(**config).run()
     elif strategy == 'old-combined3':
         log_info('Old Combined3 strategy')
-        assert C is not None
         config = dict(scenario_tree=scenario_tree,
                       C=C, K=K, T=T,
                       is_minimize=is_minimize,

@@ -22,7 +22,7 @@ class Instance:
     Reduction = namedtuple('Reduction', VARIABLES + ' totalizer')
     Assignment = namedtuple('Assignment', VARIABLES + ' C K P N')
 
-    def __init__(self, *, scenario_tree, C, K, P=None, N=0, is_minimize=False, is_incremental=False, sat_solver, sat_isolver=None, filename_prefix='', write_strategy='StringIO', is_reuse=False):
+    def __init__(self, *, scenario_tree, C, K, P=None, N=None, is_minimize=False, is_incremental=False, sat_solver, sat_isolver=None, filename_prefix='', write_strategy='StringIO', is_reuse=False):
         assert write_strategy in ('direct', 'tempfile', 'StringIO', 'pysat')
 
         if is_incremental:
@@ -113,6 +113,10 @@ class Instance:
             log_debug(cmd, symbol='$')
             os.system(cmd)
 
+            filename_fbt = f'{self.filename_prefix}_C{self.best.C}_K{self.best.K}_P{self.best.P}_N{self.best.N}_efsm.fbt'
+            os.makedirs(os.path.dirname(filename_fbt), exist_ok=True)
+            efsm.write_fbt(filename_fbt, self.scenario_tree)
+
             efsm.verify(self.scenario_tree)
 
     def run_minimize(self, *, _reuse_base=False):
@@ -132,7 +136,7 @@ class Instance:
             self.feed_isolver(self.get_filename_base())
 
         # Declare totalizer+comparator for given N
-        if self.N_start != 0:
+        if self.N_start:
             self.N = self.N_start
             self.generate_totalizer()
             _nv = self.number_of_variables  # base+totalizer variables
@@ -153,7 +157,7 @@ class Instance:
             self.N_defined = None
 
         # Generate totalizer if it wasn't created
-        if assignment and self.N_start == 0:
+        if assignment and not self.N_start:
             self.generate_totalizer()
             _nv = self.number_of_variables  # base+totalizer variables
             _nc = self.number_of_clauses  # base+totalizer clauses
@@ -191,7 +195,7 @@ class Instance:
         self.number_of_clauses = 0
         self.generate_base_reduction()
 
-        if self.N_start != 0:
+        if self.N_start:
             self.N = self.N_start
             self.generate_totalizer()
             self.generate_comparator()

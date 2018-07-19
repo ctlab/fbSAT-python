@@ -74,6 +74,10 @@ class Instance:
             log_debug(cmd, symbol='$')
             os.system(cmd)
 
+            filename_fbt = f'{self.filename_prefix}_C{self.best.C}{self.maybe_k(self.best.K)}_efsm_basic.fbt'
+            os.makedirs(os.path.dirname(filename_fbt), exist_ok=True)
+            efsm.write_fbt(filename_fbt, self.scenario_tree)
+
             efsm.verify(self.scenario_tree)
 
     def run_minimize(self):
@@ -798,7 +802,8 @@ class Instance:
                 for u in closed_range(1, U):
                     dest = assignment.transition[c][e][u]
                     if dest != c:
-                        guard = FullGuard(unique_input[u])
+                        # guard = FullGuard(unique_input[u])
+                        guard = ParseTreeGuard.from_input(unique_input[u])
                         # log_debug(f'GUARD from {c} to {dest} by e={e}, u={u}: {guard}')
                         efsm.add_transition(c, dest, input_events[e - 1], guard)
                     # else:

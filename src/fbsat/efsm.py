@@ -1,6 +1,7 @@
 import time
 from abc import ABC, abstractmethod
 from collections import OrderedDict
+import random
 
 from .utils import *
 from .printers import *
@@ -158,6 +159,37 @@ class ParseTreeGuard(Guard):
             nodes[p].child_right = nodes[child_right[p]]
 
         self.root = nodes[1]
+
+    @classmethod
+    def from_input(cls, input_values):
+        # input_values :: [1..X]:Bool
+        self = cls.__new__(cls)
+        X = len(input_values) - 1
+        # assert X == 10
+
+        left = self.Node(0, 1)
+        if not input_values[1]:
+            negation = self.Node(3, 0)
+            negation.child_left = left
+            left.parent = negation
+            left = negation
+
+        for x in closed_range(2, X):
+            right = self.Node(0, x)
+            if not input_values[x]:
+                negation = self.Node(3, 0)
+                negation.child_left = right
+                right.parent = negation
+                right = negation
+            new_root = self.Node(1, 0)
+            new_root.child_left = left
+            new_root.child_right = right
+            left.parent = new_root
+            right.parent = new_root
+            left = new_root
+
+        self.root = left
+        return self
 
     def eval(self, input_values):
         # input_values :: [1..X]:Bool
@@ -428,18 +460,24 @@ class EFSM:
 
         # BasicFB::ECC declaration
         ECC = etree.SubElement(BasicFB, 'ECC')
-        etree.SubElement(ECC, 'ECState', Name='START', Comment='Initial state')
+        etree.SubElement(ECC, 'ECState', Name='START', Comment='Initial state',
+                         x=str(random.randint(1, 1000)), y=str(random.randint(1, 1000)))
         for state in self.states.values():
-            s = etree.SubElement(ECC, 'ECState', Name=f's_{state.id}')
+            s = etree.SubElement(ECC, 'ECState', Name=f's_{state.id}',
+                                 x=str(random.randint(1, 1000)),
+                                 y=str(random.randint(1, 1000)))
             etree.SubElement(s, 'ECAction', Algorithm=f'{state.output_event}_{state.algorithm_0}_{state.algorithm_1}')
 
-        etree.SubElement(ECC, 'ECTransition', Source='START', Destination=f's_1', Condition='INIT')
+        etree.SubElement(ECC, 'ECTransition', Source='START', Destination=f's_1', Condition='INIT',
+                         x=str(random.randint(1, 1000)), y=str(random.randint(1, 1000)))
         for state in self.states.values():
             for transition in state.transitions:
                 etree.SubElement(ECC, 'ECTransition',
                                  Source=f's_{transition.source.id}',
                                  Destination=f's_{transition.destination.id}',
-                                 Condition=f'{transition.input_event}&{transition.guard.__str_nice__()}')
+                                 Condition=f'{transition.input_event}&{transition.guard.__str_nice__()}',
+                                 x=str(random.randint(1, 1000)),
+                                 y=str(random.randint(1, 1000)))
 
         # BasicFB::Algorithms declaration
         algorithms = set()
@@ -457,11 +495,11 @@ class EFSM:
         with open(filename, 'w') as f:
             f.write(self.get_gv_string() + '\n')
 
-    def write_fbt(self, filename):
+    def write_fbt(self, filename, scenario_tree):
         log_debug(f'Dumping EFSM to <{filename}>...')
 
         with open(filename, 'w') as f:
-            f.write(self.get_fbt_string())
+            f.write(self.get_fbt_string(scenario_tree))
 
     def verify(self, scenario_tree):
         log_info('Verifying...')

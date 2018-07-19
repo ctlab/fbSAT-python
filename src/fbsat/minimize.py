@@ -66,7 +66,7 @@ class Instance:
             K = len(efsm.states[c].transitions)
             for k in closed_range(1, K):
                 log_info(f'Solving state {c}/{C}, transition {k}/{K}')
-                for P in itertools.islice(itertools.count(1), 20):
+                for P in itertools.islice(itertools.count(1), 15):
                     log_info(f'Trying P = {P}')
                     filename = f'{self.filename_prefix}_C{C}_c{c}_K{K}_k{k}_P{P}.dzn'
                     with open(filename, 'w') as f:
@@ -150,6 +150,10 @@ class Instance:
         cmd = f'dot -T{output_format} {filename_gv} -O'
         log_debug(cmd, symbol='$')
         os.system(cmd)
+
+        filename_fbt = f'{self.filename_prefix}_C{C}_K{max(len(state.transitions) for state in efsm.states.values())}_efsm_minimized.fbt'
+        os.makedirs(os.path.dirname(filename_fbt), exist_ok=True)
+        efsm.write_fbt(filename_fbt, self.scenario_tree)
 
         efsm.verify(self.scenario_tree)
 

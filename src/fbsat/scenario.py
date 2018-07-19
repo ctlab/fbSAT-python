@@ -247,6 +247,11 @@ class ScenarioTree(treelib.Tree):
         ParseTreeGuard.Node.predicate_names = tree.predicate_names
         ParseTreeGuard.Node.output_variable_names = tree.output_variable_names
         # ===========
+        # ===========
+        # FIXME: adhoc for algorithm2st
+        GlobalState['predicate_names'] = tree.predicate_names
+        GlobalState['output_variable_names'] = tree.output_variable_names
+        # ===========
         return tree
 
     @property

@@ -4,7 +4,7 @@ import click
 
 from .printers import log_debug, log_warn
 
-__all__ = ['NotBool', 'closed_range', 'open_maybe_gzip', 'read_names', 'b2s', 's2b']
+__all__ = ['NotBool', 'closed_range', 'open_maybe_gzip', 'read_names', 'b2s', 's2b', 'algorithm2st', 'GlobalState']
 
 GlobalState = {}
 
@@ -41,6 +41,17 @@ def read_names(filename):
         names = f.read().strip().split('\n')
     log_debug(f'Done reading names: {", ".join(names)}')
     return names
+
+
+def algorithm2st(algorithm_0, algorithm_1):
+    lines = []
+    for name, a0, a1 in zip(GlobalState['output_variable_names'], algorithm_0, algorithm_1):
+        lines.append(f'IF {name} THEN')
+        lines.append(f'    {name} := { {"0":"FALSE", "1":"TRUE"}[a1] };')
+        lines.append(f'ELSE')
+        lines.append(f'    {name} := { {"0":"FALSE", "1":"TRUE"}[a0] };')
+        lines.append(f'ENDIF;')
+    return '\n'.join(lines)
 
 
 def b2s(data):
