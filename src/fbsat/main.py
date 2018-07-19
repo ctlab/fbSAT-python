@@ -134,7 +134,8 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
                       sat_isolver=sat_isolver,
                       filename_prefix=filename_prefix,
                       write_strategy=write_strategy,
-                      is_reuse=is_reuse)
+                      is_reuse=is_reuse,
+                      use_bfs=use_bfs)
         InstanceBasic(**config).run()
     elif strategy == 'old-basic2':
         log_info('Old Basic2 strategy')

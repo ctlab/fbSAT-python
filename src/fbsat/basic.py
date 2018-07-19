@@ -23,7 +23,7 @@ class Instance:
     Reduction = namedtuple('Reduction', VARIABLES + ' tr totalizers')
     Assignment = namedtuple('Assignment', VARIABLES + ' C K')
 
-    def __init__(self, *, scenario_tree, C=None, K=None, C_max=None, is_minimize=True, is_incremental=False, sat_solver=None, sat_isolver=None, filename_prefix='', write_strategy='StringIO', is_reuse=False):
+    def __init__(self, *, scenario_tree, C=None, K=None, C_max=None, use_bfs=True, is_minimize=True, is_incremental=False, sat_solver=None, sat_isolver=None, filename_prefix='', write_strategy='StringIO', is_reuse=False):
         assert write_strategy in ('direct', 'tempfile', 'StringIO')
 
         if is_incremental:
@@ -40,6 +40,7 @@ class Instance:
         self.C_given = C
         self.K_given = K
         self.C_max = C_max
+        self.use_bfs = use_bfs
         self.scenario_tree = scenario_tree
         self.is_minimize = is_minimize
         self.is_incremental = is_incremental
@@ -356,7 +357,9 @@ class Instance:
         algorithm_0 = self.declare_array(C, Z)
         algorithm_1 = self.declare_array(C, Z)
         output_event = self.declare_array(C, O)
-        # TODO: bfs variables
+        # bfs variables
+        bfs_transition = self.declare_array(C, C)
+        bfs_parent = self.declare_array(C, C)
 
         # =-=-=-=-=-=-=
         #  CONSTRAINTS
@@ -372,6 +375,24 @@ class Instance:
             for a in range(lower, upper):
                 for b in closed_range(a + 1, upper):
                     self.add_clause(-data[a], -data[b])
+
+        def imply(lhs, rhs):
+            """lhs => rhs"""
+            self.add_clause(-lhs, rhs)
+
+        def iff_and(lhs, rhs):
+            """lhs <=> AND(rhs)"""
+            rhs = tuple(rhs)
+            for x in rhs:
+                self.add_clause(x, -lhs)
+            self.add_clause(lhs, *(-x for x in rhs))
+
+        def iff_or(lhs, rhs):
+            """lhs <=> OR(rhs)"""
+            rhs = tuple(rhs)
+            for x in rhs:
+                self.add_clause(-x, lhs)
+            self.add_clause(-lhs, *rhs)
 
         so_far_state = [self.number_of_clauses]
 
@@ -487,9 +508,41 @@ class Instance:
 
         log_debug(f'4. Clauses: {so_far()}', symbol='STAT')
 
-        # TODO: 5. BFS constraints
+        if self.use_bfs:
+            # 5. BFS constraints
+            # 5.1. F_t
+            for i in closed_range(1, C):
+                for j in closed_range(1, C):
+                    # t_ij <=> OR_{e,u}(transition_ieuj)
+                    rhs = []
+                    for e in closed_range(1, E):
+                        for u in closed_range(1, U):
+                            rhs.append(transition[i][e][u][j])
+                    iff_or(bfs_transition[i][j], rhs)
 
-        # log_debug(f'5. Clauses: {so_far()}', symbol='STAT')
+            # 5.2. F_p
+            for i in closed_range(1, C):
+                for j in closed_range(1, i):  # to avoid ambiguous unused variable
+                    self.add_clause(-bfs_parent[j][i])
+                for j in closed_range(i + 1, C):
+                    # p_ji <=> t_ij & AND_[k<i](~t_kj)
+                    rhs = [bfs_transition[i][j]]
+                    for k in closed_range(1, i - 1):
+                        rhs.append(-bfs_transition[k][j])
+                    iff_and(bfs_parent[j][i], rhs)
+
+            # 5.3. F_ALO(p)
+            for j in closed_range(2, C):
+                self.add_clause(*[bfs_parent[j][i] for i in closed_range(1, j - 1)])
+
+            # 5.4. F_BFS(p)
+            for k in closed_range(1, C):
+                for i in closed_range(k + 1, C):
+                    for j in closed_range(i + 1, C - 1):
+                        # p_ji => ~p_{j+1,k}
+                        imply(bfs_parent[j][i], -bfs_parent[j + 1][k])
+
+            log_debug(f'5. Clauses: {so_far()}', symbol='STAT')
 
         # =-=-=-=-=
         #   FINISH
