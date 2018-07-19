@@ -348,7 +348,7 @@ class BasicAutomatonTask(Task):
                 add_clause(*[bfs_parent[j][i] for i in closed_range(1, j - 1)])
 
             # 6.4. F_BFS(p)
-            for k in closed_range(1, K):
+            for k in closed_range(1, C):
                 for i in closed_range(k + 1, C):
                     for j in closed_range(i + 1, C - 1):
                         # p_ji => ~p_{j+1,k}
