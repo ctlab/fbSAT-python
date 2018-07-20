@@ -61,7 +61,7 @@ CONTEXT_SETTINGS = dict(
 @click.option('-T', 'T', type=int, metavar='<int>',
               help='Upper bound on total number of transitions')
 @click.option('-Cmax', 'Cmax', type=int, metavar='<int>',
-              help='[Basic] C_max')
+              help='[old-basic] C_max')
 @click.option('--min', 'is_minimize', is_flag=True,
               help='Do minimize')
 @click.option('--incremental', 'is_incremental', is_flag=True,
@@ -71,6 +71,12 @@ CONTEXT_SETTINGS = dict(
 @click.option('--bfs/--no-bfs', 'use_bfs', is_flag=True,
               default=True, show_default=True,
               help='Use BFS symmetry-breaking constraints')
+@click.option('--distinct/--no-distinct', 'is_distinct', is_flag=True,
+              default=False, show_default=True,
+              help='[complete] Distinct transitions')
+@click.option('--forbid-or/--no-forbid-or', 'is_forbid_or', is_flag=True,
+              default=False, show_default=True,
+              help='[complete] Distinct transitions')
 @click.option('--sat-solver', metavar='<cmd>',
               default='glucose -model -verb=0', show_default=True,
               # default='cryptominisat5 --verb=0', show_default=True,
@@ -90,7 +96,7 @@ CONTEXT_SETTINGS = dict(
 @click.version_option(__version__)
 def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_variable_names,
         filename_prefix, outdir, C, K, P, N, T, Cmax, is_minimize, is_incremental, is_reuse,
-        use_bfs, sat_solver, sat_isolver, mzn_solver, write_strategy, automaton):
+        use_bfs, is_distinct, is_forbid_or, sat_solver, sat_isolver, mzn_solver, write_strategy, automaton):
     log_info('Welcome!')
     time_start = time.time()
     # =====================
@@ -228,6 +234,8 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
         config = dict(scenario_tree=scenario_tree,
                       C=C, K=K, P=P,
                       use_bfs=use_bfs,
+                      is_distinct=is_distinct,
+                      is_forbid_or=is_forbid_or,
                       solver_cmd=sat_solver,
                       is_incremental=is_incremental,
                       outdir=outdir)
@@ -239,6 +247,8 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
         config = dict(scenario_tree=scenario_tree,
                       C=C, K=K, P=P, N=N,
                       use_bfs=use_bfs,
+                      is_distinct=is_distinct,
+                      is_forbid_or=is_forbid_or,
                       solver_cmd=sat_solver,
                       is_incremental=is_incremental,
                       outdir=outdir)

@@ -169,6 +169,7 @@ class StreamSolver(Solver):
         else:
             log_error(f'UNSAT in {time.time() - time_start_solve:.2f} s')
 
+
 class IncrementalSolver(Solver):
 
     def __init__(self, cmd, filename_prefix=None):

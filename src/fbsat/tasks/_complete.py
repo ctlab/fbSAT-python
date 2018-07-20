@@ -23,7 +23,7 @@ class CompleteAutomatonTask(Task):
     # tests-39: C=8, K=8, (T=16), P=5, N=25 (no-distinct)
     # tests-39: C=8, K=8, (T=15), P=5, N=28 (distinct)
 
-    def __init__(self, scenario_tree, *, C, K=None, P, use_bfs=True, solver_cmd=None, is_incremental=False, outdir=''):
+    def __init__(self, scenario_tree, *, C, K=None, P, use_bfs=True, is_distinct=False, is_forbid_or=False, solver_cmd=None, is_incremental=False, outdir=''):
         if K is None:
             K = C
 
@@ -32,6 +32,8 @@ class CompleteAutomatonTask(Task):
         self.K = K
         self.P = P
         self.use_bfs = use_bfs
+        self.is_distinct = is_distinct
+        self.is_forbid_or = is_forbid_or
         self.outdir = outdir
         self.is_incremental = is_incremental
         self.solver_config = dict(cmd=solver_cmd)
@@ -710,13 +712,14 @@ class CompleteAutomatonTask(Task):
         # A. Declare any ad-hoc you like
 
         # adhoc 1. Distinct transitions
-        # for i in closed_range(1, C):
-        #     for e in closed_range(1, E):
-        #         for k in closed_range(1, K):
-        #             # transition[i,e,k,j] => AND_{k_!=k}(~transition[i,e,k_,j])
-        #             for j in closed_range(1, C):
-        #                 for k_ in closed_range(k + 1, K):
-        #                     imply(transition[i][e][k][j], -transition[i][e][k_][j])
+        if self.is_distinct:
+            for i in closed_range(1, C):
+                for e in closed_range(1, E):
+                    for k in closed_range(1, K):
+                        # transition[i,e,k,j] => AND_{k_!=k}(~transition[i,e,k_,j])
+                        for j in closed_range(1, C):
+                            for k_ in closed_range(k + 1, K):
+                                imply(transition[i][e][k][j], -transition[i][e][k_][j])
 
         # adhoc 2. (comb)
         for c in closed_range(1, C):
@@ -735,32 +738,33 @@ class CompleteAutomatonTask(Task):
                         imply(first_fired[c][e][u][k], -nodetype[c][e][k][1][4])
 
         # adhoc 4. Forbid double negation
-        # for c in closed_range(1, C):
-        #     for e in closed_range(1, E):
-        #         for k in closed_range(1, K):
-        #             for p in closed_range(1, P - 1):
-        #                 for ch in closed_range(p + 1, P):
-        #                     # (nodetype[p]=3 & child_left[p]=ch) => nodetype[ch]!=3
-        #                     add_clause(-nodetype[c][e][k][p][3],
-        #                                -child_left[c][e][k][p][ch],
-        #                                -nodetype[c][e][k][ch][3])
-        # adhoc 5. Allow only negation of terminals
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
                     for p in closed_range(1, P - 1):
                         for ch in closed_range(p + 1, P):
-                            # (nodetype[p]=3 & child_left[p]=ch) => nodetype[ch]=0
+                            # (nodetype[p]=3 & child_left[p]=ch) => nodetype[ch]!=3
                             add_clause(-nodetype[c][e][k][p][3],
                                        -child_left[c][e][k][p][ch],
-                                       nodetype[c][e][k][ch][0])
+                                       -nodetype[c][e][k][ch][3])
+        # adhoc 5. Allow only negation of terminals
+        # for c in closed_range(1, C):
+        #     for e in closed_range(1, E):
+        #         for k in closed_range(1, K):
+        #             for p in closed_range(1, P - 1):
+        #                 for ch in closed_range(p + 1, P):
+        #                     # (nodetype[p]=3 & child_left[p]=ch) => nodetype[ch]=0
+        #                     add_clause(-nodetype[c][e][k][p][3],
+        #                                -child_left[c][e][k][p][ch],
+        #                                nodetype[c][e][k][ch][0])
 
         # adhoc 99. Forbid OR...
-        for c in closed_range(1, C):
-            for e in closed_range(1, E):
-                for k in closed_range(1, K):
-                    for p in closed_range(1, P):
-                        add_clause(-nodetype[c][e][k][p][2])
+        if self.is_forbid_or:
+            for c in closed_range(1, C):
+                for e in closed_range(1, E):
+                    for k in closed_range(1, K):
+                        for p in closed_range(1, P):
+                            add_clause(-nodetype[c][e][k][p][2])
 
         log_debug(f'A. Clauses: {so_far()}', symbol='STAT')
 
