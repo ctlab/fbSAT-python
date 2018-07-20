@@ -214,8 +214,6 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
         task.finalize()
     elif strategy == 'basic-min':
         log_info('MinimalBasic strategy')
-        if K is not None:
-            log_warn(f'Ignoring specified K={K}')
         config = dict(scenario_tree=scenario_tree,
                       C=C, K=K, T=T,
                       use_bfs=use_bfs,
