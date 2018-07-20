@@ -32,6 +32,7 @@ class MinimalBasicAutomatonTask(Task):
     def run(self, *, fast=False, only_C=False):
         log_debug(f'MinimalBasicAutomatonTask: running...')
         time_start_run = time.time()
+        best = None
 
         if self.C is None:
             log_debug('MinimalBasicAutomatonTask: searching for minimal C...')
@@ -53,8 +54,9 @@ class MinimalBasicAutomatonTask(Task):
             task = BasicAutomatonTask(self.scenario_tree, C=self.C, K=self.K, **self.subtask_config)
             best = task.run(self.T_init, fast=True)
 
-        if not only_C and assignment:
+        if not only_C and best:
             log_debug('MinimalBasicAutomatonTask: searching for minimal T...')
+            assignment = best
             while True:
                 best = assignment
                 T = best.T - 1
