@@ -28,6 +28,9 @@ class FullGuard(Guard):
     def __str__(self):
         return b2s(self.input_values[1:])
 
+    def __str_gv__(self):
+        return str(self)
+
     def __str_fbt__(self):
         return ' & '.join({True: '', False: '~'}[value] + name
                           for name, value in zip(ParseTreeGuard.Node.output_variable_names,
@@ -211,6 +214,9 @@ class ParseTreeGuard(Guard):
 
     def __str__(self):
         return str(self.root)
+
+    def __str_gv__(self):
+        return str(self)
 
     def __str_fbt__(self):
         return self.root.__str_fbt__()
