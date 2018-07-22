@@ -28,7 +28,7 @@ class OutputAction:
         return f'{self.output_event}({self.output_values})'
 
     def __repr__(self):
-        return f'{self.__name__}(output_event={self.output_event}, output_values={self.output_values})'
+        return f'OutputAction(output_event={self.output_event}, output_values={self.output_values})'
 
 
 class ScenarioElement:
@@ -66,7 +66,7 @@ class ScenarioElement:
         return f'{self.input_event}({self.input_values})->{self.output_actions[0]}'
 
     def __repr__(self):
-        return f'{self.__name__}(input_event={self.input_event}, input_values={self.input_values}, output_actions={self.output_actions})'
+        return f'ScenarioElement(input_event={self.input_event}, input_values={self.input_values}, output_actions={self.output_actions})'
 
 
 class Scenario:
@@ -97,7 +97,7 @@ class Scenario:
     def __iter__(self):
         yield from self.elements
 
-    def __repr__(self):
+    def __str__(self):
         return f'<Scenario {self.elements}>'
 
     @staticmethod
@@ -122,7 +122,7 @@ class Scenario:
                     for input_event, input_values in t[:-1]:
                         scenario.add_element(input_event, input_values, [OutputAction(None, LocalState.last_output_values)])
 
-                    if len(m.captures('output_event')) == 0:
+                    if not m.captures('output_event'):
                         continue
 
                     input_event, input_values = t[-1]

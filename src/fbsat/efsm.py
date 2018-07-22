@@ -526,7 +526,8 @@ class EFSM:
         etree.SubElement(ECC, 'ECState', Name='START', Comment='Initial state', x=_r(), y=_r())
         for state in self.states.values():
             s = etree.SubElement(ECC, 'ECState', Name=f's_{state.id}', x=_r(), y=_r())
-            etree.SubElement(s, 'ECAction', Algorithm=f'{state.output_event}_{state.algorithm_0}_{state.algorithm_1}')
+            algorithm = f'{state.algorithm_0}_{state.algorithm_1}'
+            etree.SubElement(s, 'ECAction', Algorithm=algorithm, Output=state.output_event)
 
         etree.SubElement(ECC, 'ECTransition', Source='START', Destination=f's_1', Condition='INIT', x=_r(), y=_r())
         for state in self.states.values():
@@ -537,11 +538,9 @@ class EFSM:
                                  Condition=f'{transition.input_event}&{transition.guard.__str_fbt__()}')
 
         # BasicFB::Algorithms declaration
-        algorithms = set()
-        for state in self.states.values():
-            algorithms.add((state.output_event, state.algorithm_0, state.algorithm_1))
-        for output_event, algorithm_0, algorithm_1 in algorithms:
-            a = etree.SubElement(BasicFB, 'Algorithm', Name=f'{output_event}_{algorithm_0}_{algorithm_1}')
+        algorithms = set((state.algorithm_0, state.algorithm_1) for state in self.states.values())
+        for algorithm_0, algorithm_1 in algorithms:
+            a = etree.SubElement(BasicFB, 'Algorithm', Name=f'{algorithm_0}_{algorithm_1}')
             st = algorithm2st(tree.output_variable_names, algorithm_0, algorithm_1)
             etree.SubElement(a, 'ST', Text=f'{output_event} := FALSE;\n{st}\n')
 

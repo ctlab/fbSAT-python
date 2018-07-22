@@ -24,9 +24,7 @@ class MyGecode(pymzn.Solver):
         The path to the directory for global included files.
     """
 
-    def __init__(
-        self, mzn_path='mzn-gecode', fzn_path='fzn-gecode', globals_dir='gecode'
-    ):
+    def __init__(self, mzn_path='mzn-gecode', fzn_path='fzn-gecode', globals_dir='gecode'):
         super().__init__(
             globals_dir, support_mzn=True, support_all=True, support_num=True,
             support_timeout=True, support_stats=True
@@ -34,11 +32,9 @@ class MyGecode(pymzn.Solver):
         self.mzn_cmd = mzn_path
         self.fzn_cmd = fzn_path
 
-    def args(
-        self, mzn_file, *dzn_files, data=None, include=None, timeout=None,
-        all_solutions=False, num_solutions=None, output_mode='item', parallel=1,
-        seed=0, statistics=False, **kwargs
-    ):
+    def args(self, mzn_file, *dzn_files, data=None, include=None, timeout=None,
+             all_solutions=False, num_solutions=None, output_mode='item', parallel=1,
+             seed=0, statistics=False, **kwargs):
         mzn = False
         args = []
         if mzn_file.endswith('fzn'):
@@ -183,10 +179,10 @@ class MinimizeAllGuardsTask:
         self.T = T
         self.outdir = outdir
         self.subtask_config = dict(C=self.C, K=self.K,
-                                           use_bfs=use_bfs,
-                                             solver_cmd=solver_cmd,
-                                             write_strategy=write_strategy,
-                                             outdir=outdir)
+                                   use_bfs=use_bfs,
+                                   solver_cmd=solver_cmd,
+                                   write_strategy=write_strategy,
+                                   outdir=outdir)
 
     def get_stem(self, C, K, T):
         return f'minimized_{self.scenario_tree.scenarios_stem}_C{C}_K{K}_T{T}'

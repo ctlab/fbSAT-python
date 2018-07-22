@@ -83,7 +83,7 @@ class Solver(ABC):
 
             r = [self.new_variable() for _ in range(m)]  # 0-based
 
-            if len(q) != 0:
+            if q:
                 _L.extend(r)
 
             for alpha in closed_range(m1):

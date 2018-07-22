@@ -14,7 +14,7 @@ __all__ = ['FullAutomatonTask']
 VARIABLES = 'color transition output_event algorithm_0 algorithm_1'
 
 
-class FullAutomatonTask:
+class FullAutomatonTask(Task):
 
     Reduction = namedtuple('Reduction', VARIABLES + ' totalizer')
     Assignment = namedtuple('Assignment', VARIABLES + ' C T')

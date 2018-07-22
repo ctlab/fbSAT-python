@@ -4,7 +4,7 @@ import time
 from . import CompleteAutomatonTask, MinimalPartialAutomatonTask, Task
 from ..efsm import EFSM
 from ..printers import log_br, log_debug, log_error, log_info, log_success
-from ..utils import parse_raw_assignment_algo, parse_raw_assignment_bool, parse_raw_assignment_int, s2b
+from ..utils import s2b
 
 __all__ = ['MinimalCompleteAutomatonTask']
 
