@@ -101,7 +101,7 @@ class PartialAutomatonTask(Task):
         assert self.number_of_variables == 0
         assert self.number_of_clauses == 0
 
-        log_debug(f'Generating base reduction for C={C}, K={K}...')
+        log_debug(f'Declaring base reduction for C={C}, K={K}...')
         time_start_base = time.time()
 
         # =-=-=-=-=-=
@@ -356,10 +356,8 @@ class PartialAutomatonTask(Task):
 
             log_debug(f'6. Clauses: {so_far()}', symbol='STAT')
 
-        # Declare any ad-hoc you like
-        # AD-HOCs
-
-        # adhoc-1. Distinct transitions
+        # A. AD-HOCs
+        # A.1. Distinct transitions
         for i in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
@@ -385,14 +383,14 @@ class PartialAutomatonTask(Task):
             totalizer=None
         )
 
-        log_debug(f'Done generating base reduction ({self.number_of_variables} variables, {self.number_of_clauses} clauses) in {time.time() - time_start_base:.2f} s')
+        log_debug(f'Done declaring base reduction ({self.number_of_variables} variables, {self.number_of_clauses} clauses) in {time.time() - time_start_base:.2f} s')
 
     def _declare_totalizer(self):
         if self._is_totalizer_declared:
             return
         self._is_totalizer_declared = True
 
-        log_debug('Generating totalizer...')
+        log_debug('Declaring totalizer...')
         time_start_totalizer = time.time()
         _nv = self.number_of_variables
         _nc = self.number_of_clauses
@@ -404,10 +402,10 @@ class PartialAutomatonTask(Task):
         totalizer = self.solver.get_totalizer(_E)
         self.reduction = self.reduction._replace(totalizer=totalizer)
 
-        log_debug(f'Done generating totalizer ({self.number_of_variables-_nv} variables, {self.number_of_clauses-_nc} clauses) in {time.time() - time_start_totalizer:.2f} s')
+        log_debug(f'Done declaring totalizer ({self.number_of_variables-_nv} variables, {self.number_of_clauses-_nc} clauses) in {time.time() - time_start_totalizer:.2f} s')
 
     def _declare_comparator(self, T):
-        log_debug(f'Generating comparator for T={T}...')
+        log_debug(f'Declaring comparator for T={T}...')
         time_start_comparator = time.time()
         _nc = self.number_of_clauses
 
@@ -422,7 +420,7 @@ class PartialAutomatonTask(Task):
 
         self._T_defined = T
 
-        log_debug(f'Done generating comparator ({self.number_of_clauses-_nc} clauses) in {time.time() - time_start_comparator:.2f} s')
+        log_debug(f'Done declaring comparator ({self.number_of_clauses-_nc} clauses) in {time.time() - time_start_comparator:.2f} s')
 
     def parse_raw_assignment(self, raw_assignment):
         if raw_assignment is None:
@@ -475,7 +473,7 @@ class PartialAutomatonTask(Task):
         if dump:
             automaton.dump(self.get_filename_prefix(assignment.T))
 
-        log_success('Minimal partial automaton:')
+        log_success('Partial automaton:')
         automaton.pprint()
         automaton.verify()
 

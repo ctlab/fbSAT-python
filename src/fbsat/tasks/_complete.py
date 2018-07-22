@@ -116,7 +116,7 @@ class CompleteAutomatonTask(Task):
         assert self.number_of_variables == 0
         assert self.number_of_clauses == 0
 
-        log_debug(f'Generating base reduction for C={C}, K={K}, P={P}...')
+        log_debug(f'Declaring base reduction for C={C}, K={K}, P={P}...')
         time_start_base = time.time()
 
         # =-=-=-=-=-=
@@ -709,9 +709,8 @@ class CompleteAutomatonTask(Task):
 
             log_debug(f'12. Clauses: {so_far()}', symbol='STAT')
 
-        # A. Declare any ad-hoc you like
-
-        # adhoc 1. Distinct transitions
+        # A. AD-HOCs
+        # A.1. Distinct transitions
         if self.is_distinct:
             for i in closed_range(1, C):
                 for e in closed_range(1, E):
@@ -721,13 +720,13 @@ class CompleteAutomatonTask(Task):
                             for k_ in closed_range(k + 1, K):
                                 imply(transition[i][e][k][j], -transition[i][e][k_][j])
 
-        # adhoc 2. (comb)
+        # A.2. (comb)
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
                     iff(transition[c][e][k][0], nodetype[c][e][k][1][4])
 
-        # adhoc 3. (comb)
+        # A.3. (comb)
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
@@ -737,7 +736,7 @@ class CompleteAutomatonTask(Task):
                         # ff => nodetype[1]!=4
                         imply(first_fired[c][e][u][k], -nodetype[c][e][k][1][4])
 
-        # adhoc 4. Forbid double negation
+        # A.4a. Forbid double negation
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
@@ -747,7 +746,7 @@ class CompleteAutomatonTask(Task):
                             add_clause(-nodetype[c][e][k][p][3],
                                        -child_left[c][e][k][p][ch],
                                        -nodetype[c][e][k][ch][3])
-        # adhoc 5. Allow only negation of terminals
+        # A.4b. Allow only negation of terminals
         # for c in closed_range(1, C):
         #     for e in closed_range(1, E):
         #         for k in closed_range(1, K):
@@ -758,7 +757,7 @@ class CompleteAutomatonTask(Task):
         #                                -child_left[c][e][k][p][ch],
         #                                nodetype[c][e][k][ch][0])
 
-        # adhoc 99. Forbid OR...
+        # A.5. Forbid OR
         if self.is_forbid_or:
             for c in closed_range(1, C):
                 for e in closed_range(1, E):
@@ -791,14 +790,14 @@ class CompleteAutomatonTask(Task):
             totalizer=None
         )
 
-        log_debug(f'Done generating base reduction ({self.number_of_variables} variables, {self.number_of_clauses} clauses) in {time.time() - time_start_base:.2f} s')
+        log_debug(f'Done declaring base reduction ({self.number_of_variables} variables, {self.number_of_clauses} clauses) in {time.time() - time_start_base:.2f} s')
 
     def _declare_totalizer(self):
         if self._is_totalizer_declared:
             return
         self._is_totalizer_declared = True
 
-        log_debug('Generating totalizer...')
+        log_debug('Declaring totalizer...')
         time_start_totalizer = time.time()
         _nv = self.number_of_variables
         _nc = self.number_of_clauses
@@ -811,10 +810,10 @@ class CompleteAutomatonTask(Task):
         totalizer = self.solver.get_totalizer(_E)
         self.reduction = self.reduction._replace(totalizer=totalizer)
 
-        log_debug(f'Done generating totalizer ({self.number_of_variables-_nv} variables, {self.number_of_clauses-_nc} clauses) in {time.time() - time_start_totalizer:.2f} s')
+        log_debug(f'Done declaring totalizer ({self.number_of_variables-_nv} variables, {self.number_of_clauses-_nc} clauses) in {time.time() - time_start_totalizer:.2f} s')
 
     def _declare_comparator(self, N):
-        log_debug(f'Generating comparator for N={N}...')
+        log_debug(f'Declaring comparator for N={N}...')
         time_start_comparator = time.time()
         _nc = self.number_of_clauses
 
@@ -829,7 +828,7 @@ class CompleteAutomatonTask(Task):
 
         self._N_defined = N
 
-        log_debug(f'Done generating nodes comparator ({self.number_of_clauses-_nc} clauses) in {time.time() - time_start_comparator:.2f} s')
+        log_debug(f'Done declaring nodes comparator ({self.number_of_clauses-_nc} clauses) in {time.time() - time_start_comparator:.2f} s')
 
     def parse_raw_assignment(self, raw_assignment):
         if raw_assignment is None:

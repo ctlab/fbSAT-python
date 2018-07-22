@@ -327,7 +327,7 @@ class EFSM:
         if efsm.number_of_states != assignment.C:
             log_error(f'Inequal number of states: efsm has {efsm.number_of_states}, assignment has {assignment.C}')
         if efsm.number_of_transitions != assignment.T:
-            log_error(f'Inequal number of nodes: efsm has {efsm.number_of_transitions}, assignment has {assignment.T}')
+            log_error(f'Inequal number of transitions: efsm has {efsm.number_of_transitions}, assignment has {assignment.T}')
 
         log_debug(f'Done building EFSM with {efsm.number_of_states} states and {efsm.number_of_transitions} transitions in {time.time() - time_start_build:.2f} s')
         return efsm
@@ -368,7 +368,7 @@ class EFSM:
         if efsm.number_of_states != assignment.C:
             log_error(f'Inequal number of states: efsm has {efsm.number_of_states}, assignment has {assignment.C}')
         if efsm.number_of_transitions != assignment.T:
-            log_error(f'Inequal number of nodes: efsm has {efsm.number_of_transitions}, assignment has {assignment.T}')
+            log_error(f'Inequal number of transitions: efsm has {efsm.number_of_transitions}, assignment has {assignment.T}')
         if efsm.number_of_nodes != assignment.N:
             log_error(f'Inequal number of nodes: efsm has {efsm.number_of_nodes}, assignment has {assignment.N}')
 
@@ -522,8 +522,6 @@ class EFSM:
             f.write(self.get_fbt_string())
 
     def dump(self, prefix):
-        log_debug('Dumping EFSM...')
-
         filename_gv = prefix + '.gv'
         self.write_gv(filename_gv)
 
@@ -534,8 +532,6 @@ class EFSM:
 
         filename_fbt = prefix + '.fbt'
         self.write_fbt(filename_fbt)
-
-        log_debug('Done dumping EFSM')
 
     def verify(self):
         log_info('Verifying...')
