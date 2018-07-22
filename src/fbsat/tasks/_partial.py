@@ -20,6 +20,8 @@ class PartialAutomatonTask(Task):
     Assignment = namedtuple('Assignment', VARIABLES + ' C K T')
 
     def __init__(self, scenario_tree, *, C, K=None, use_bfs=True, solver_cmd=None, is_incremental=False, outdir=''):
+        assert C is not None
+
         if K is None:
             K = C
 

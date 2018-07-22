@@ -24,6 +24,9 @@ class CompleteAutomatonTask(Task):
     # tests-39: C=8, K=8, (T=15), P=5, N=28 (distinct)
 
     def __init__(self, scenario_tree, *, C, K=None, P, use_bfs=True, is_distinct=False, is_forbid_or=False, solver_cmd=None, is_incremental=False, outdir=''):
+        assert C is not None
+        assert P is not None
+
         if K is None:
             K = C
 
