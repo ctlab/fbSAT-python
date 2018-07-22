@@ -255,11 +255,6 @@ class ScenarioTree(treelib.Tree):
         ParseTreeGuard.Node.predicate_names = tree.predicate_names
         ParseTreeGuard.Node.output_variable_names = tree.output_variable_names
         # ===========
-        # ===========
-        # FIXME: adhoc for algorithm2st
-        GlobalState['predicate_names'] = tree.predicate_names
-        GlobalState['output_variable_names'] = tree.output_variable_names
-        # ===========
         return tree
 
     @property
@@ -278,7 +273,7 @@ class ScenarioTree(treelib.Tree):
         if hasattr(self, '_output_variable_names'):
             return self._output_variable_names
         else:
-            return list(map(lambda z: f'z{z}', closed_range(1, self.Z)))
+            return [f'z{z}' for z in closed_range(1, self.Z)]
 
     @output_variable_names.setter
     def output_variable_names(self, value):

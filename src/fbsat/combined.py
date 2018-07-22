@@ -117,7 +117,7 @@ class Instance:
             os.makedirs(os.path.dirname(filename_fbt), exist_ok=True)
             efsm.write_fbt(filename_fbt, self.scenario_tree)
 
-            efsm.verify(self.scenario_tree)
+            efsm.verify()
 
     def run_minimize(self, *, _reuse_base=False):
         self.number_of_variables = 0
@@ -1205,7 +1205,7 @@ class Instance:
         input_events = tree.input_events
         output_events = tree.output_events
 
-        efsm = EFSM()
+        efsm = EFSM(tree)
         for c in closed_range(1, C):
             efsm.add_state(c,
                            output_events[assignment.output_event[c] - 1],

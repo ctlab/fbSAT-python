@@ -241,16 +241,11 @@ class MinimizeAllGuardsTask:
                     else:
                         log_debug(f'MinimizeAllGuardsTask: guard on transition k={k} from state c={c} was not minimized')
 
-            filename_gv = self.get_filename_prefix(C, K, T) + '.gv'
-            automaton.write_gv(filename_gv)
-            output_format = 'svg'
-            cmd = f'dot -T{output_format} {filename_gv} -O'
-            log_debug(cmd, symbol='$')
-            os.system(cmd)
+            automaton.dump(self.get_filename_prefix(C, K, T))
 
             log_success('Automaton with minimized guards:')
             automaton.pprint()
-            automaton.verify(self.scenario_tree)
+            automaton.verify()
 
         log_debug(f'MinimizeAllGuardsTask: done in {time.time() - time_start_run:.2f} s')
         log_br()

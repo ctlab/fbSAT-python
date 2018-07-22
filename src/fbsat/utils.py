@@ -4,9 +4,8 @@ import click
 
 from .printers import log_debug, log_warn
 
-__all__ = ['NotBool', 'closed_range', 'open_maybe_gzip', 'read_names', 'b2s', 's2b', 'algorithm2st', 'GlobalState']
-
-GlobalState = {}
+__all__ = ['NotBool', 'closed_range', 'open_maybe_gzip', 'read_names', 'algorithm2st', 'b2s', 's2b',
+           'parse_raw_assignment_algo', 'parse_raw_assignment_bool', 'parse_raw_assignment_int']
 
 
 class NotBoolType:
@@ -43,9 +42,10 @@ def read_names(filename):
     return names
 
 
-def algorithm2st(algorithm_0, algorithm_1):
+def algorithm2st(output_variable_names, algorithm_0, algorithm_1):
+    assert len(output_variable_names) == len(algorithm_0) == len(algorithm_1)
     lines = []
-    for name, a0, a1 in zip(GlobalState['output_variable_names'], algorithm_0, algorithm_1):
+    for name, a0, a1 in zip(output_variable_names, algorithm_0, algorithm_1):
         lines.append(f'IF {name} THEN')
         lines.append(f'    {name} := { {"0":"FALSE", "1":"TRUE"}[a1] };')
         lines.append(f'ELSE')

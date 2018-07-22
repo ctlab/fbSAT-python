@@ -473,15 +473,10 @@ class BasicAutomatonTask(Task):
         automaton = EFSM.new_with_truth_tables(self.scenario_tree, assignment)
 
         if dump:
-            filename_gv = self.get_filename_prefix(assignment.T) + '.gv'
-            automaton.write_gv(filename_gv)
-            output_format = 'svg'
-            cmd = f'dot -T{output_format} {filename_gv} -O'
-            log_debug(cmd, symbol='$')
-            os.system(cmd)
+            automaton.dump(self.get_filename_prefix(assignment.T))
 
         log_success('Minimal basic automaton:')
         automaton.pprint()
-        automaton.verify(self.scenario_tree)
+        automaton.verify()
 
         return automaton

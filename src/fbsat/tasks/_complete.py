@@ -886,15 +886,10 @@ class CompleteAutomatonTask(Task):
         automaton = EFSM.new_with_parse_trees(self.scenario_tree, assignment)
 
         if dump:
-            filename_gv = self.get_filename_prefix(assignment.N) + '.gv'
-            automaton.write_gv(filename_gv)
-            output_format = 'svg'
-            cmd = f'dot -T{output_format} {filename_gv} -O'
-            log_debug(cmd, symbol='$')
-            os.system(cmd)
+            automaton.dump(self.get_filename_prefix(assignment.N))
 
         log_success('Complete automaton:')
         automaton.pprint()
-        automaton.verify(self.scenario_tree)
+        automaton.verify()
 
         return automaton

@@ -77,9 +77,9 @@ class Instance:
 
             filename_fbt = f'{self.filename_prefix}_C{self.best.C}{self.maybe_k(self.best.K)}_efsm_basic.fbt'
             os.makedirs(os.path.dirname(filename_fbt), exist_ok=True)
-            efsm.write_fbt(filename_fbt, self.scenario_tree)
+            efsm.write_fbt(filename_fbt)
 
-            efsm.verify(self.scenario_tree)
+            efsm.verify()
 
     def run_minimize(self):
         if self.C_given is None:  # C unspecified -> iterate over C
@@ -842,7 +842,7 @@ class Instance:
         output_events = tree.output_events  # [1..O]:OutputEvent::str
         unique_input = tree.unique_input  # [1..U, 1..X]:Bool
 
-        efsm = EFSM()
+        efsm = EFSM(tree)
         for c in closed_range(1, C):
             efsm.add_state(c,
                            output_events[assignment.output_event[c] - 1],

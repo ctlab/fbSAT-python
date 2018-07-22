@@ -1,3 +1,4 @@
+import os
 import time
 from abc import ABC, abstractmethod
 from collections import OrderedDict
@@ -27,6 +28,11 @@ class FullGuard(Guard):
     def __str__(self):
         return b2s(self.input_values[1:])
 
+    def __str_fbt__(self):
+        return ' & '.join({True: '', False: '~'}[value] + name
+                          for name, value in zip(ParseTreeGuard.Node.output_variable_names,
+                                                 self.input_values[1:]))
+
 
 class TruthTableGuard(Guard):
     def __init__(self, truth_table, unique_inputs):
@@ -39,16 +45,21 @@ class TruthTableGuard(Guard):
         return self.truth_table[self.unique_inputs.index(s)] in '1x'
 
     def __str__(self):
-        # return f'[{self.truth_table}]'
-        return f'[...]'
+        return f'[{self.truth_table}]'
+
+    def __str_gv__(self):
+        return '[...]'
+
+    def __str_fbt__(self):
+        return f'TruthTable({self.truth_table})'
 
 
 class ParseTreeGuard(Guard):
 
     class Node:
 
-        predicate_names = 'c1Home c1End c2Home c2End vcHome vcEnd pp1 pp2 pp3 vac'.split()
-        output_variable_names = 'c1Extend c1Retract c2Extend c2Retract vcExtend vacuum_on vacuum_off'.split()
+        predicate_names = None
+        output_variable_names = None
 
         def __init__(self, nodetype, terminal):
             assert 0 <= nodetype <= 4
@@ -118,31 +129,31 @@ class ParseTreeGuard(Guard):
             elif self.nodetype == 4:  # None
                 raise ValueError(f'why are you trying to display None-typed node?')
 
-        def __str_nice__(self):
+        def __str_fbt__(self):
             if self.nodetype == 0:  # Terminal
                 return str(self)
             elif self.nodetype == 1:  # AND
-                left = self.child_left.__str_nice__()
-                right = self.child_right.__str_nice__()
+                left = self.child_left.__str_fbt__()
+                right = self.child_right.__str_fbt__()
                 if self.child_left.nodetype == 2:  # Left child is OR
                     left = f'({left})'
                 if self.child_right.nodetype == 2:  # Right child is OR
                     right = f'({right})'
                 return f'{left} AND {right}'
             elif self.nodetype == 2:  # OR
-                left = self.child_left.__str_nice__()
-                right = self.child_right.__str_nice__()
+                left = self.child_left.__str_fbt__()
+                right = self.child_right.__str_fbt__()
                 if self.child_left.nodetype == 1:  # Left child is AND
                     left = f'({left})'
                 if self.child_right.nodetype == 1:  # Right child is AND
                     right = f'({right})'
                 return f'{left} OR {right}'
             elif self.nodetype == 1:  # AND
-                return f'({self.child_left.__str_nice__()} AND {self.child_right.__str_nice__()})'
+                return f'({self.child_left.__str_fbt__()} AND {self.child_right.__str_fbt__()})'
             elif self.nodetype == 2:  # OR
-                return f'({self.child_left.__str_nice__()} OR {self.child_right.__str_nice__()})'
+                return f'({self.child_left.__str_fbt__()} OR {self.child_right.__str_fbt__()})'
             elif self.nodetype == 3:  # NOT
-                return f'NOT {self.child_left.__str_nice__()}'
+                return f'NOT {self.child_left.__str_fbt__()}'
             elif self.nodetype == 4:  # None
                 raise ValueError(f'why are you trying to display None-typed node?')
 
@@ -201,8 +212,8 @@ class ParseTreeGuard(Guard):
     def __str__(self):
         return str(self.root)
 
-    def __str_nice__(self):
-        return self.root.__str_nice__()
+    def __str_fbt__(self):
+        return self.root.__str_fbt__()
 
 
 class EFSM:
@@ -261,9 +272,9 @@ class EFSM:
         def __repr__(self):
             return f'State(id={self.id!r}, output_event={self.output_event!r}, algorithm_0={self.algorithm_0!r}, algorithm_1={self.algorithm_1!r})'
 
-    def __init__(self):
+    def __init__(self, scenario_tree):
+        self.scenario_tree = scenario_tree
         self.states = OrderedDict()
-        self.initial_state = None
 
     @classmethod
     def new_with_truth_tables(cls, scenario_tree, assignment):
@@ -279,7 +290,7 @@ class EFSM:
         output_events = tree.output_events  # [str]^O  0-based
         unique_inputs = tree.unique_inputs  # [str]^U  0-based
 
-        efsm = cls()
+        efsm = cls(scenario_tree)
         for c in closed_range(1, C):
             efsm.add_state(c,
                            output_events[assignment.output_event[c] - 1],
@@ -324,7 +335,7 @@ class EFSM:
         input_events = tree.input_events    # [str]^E  0-based
         output_events = tree.output_events  # [str]^O  0-based
 
-        efsm = cls()
+        efsm = cls(scenario_tree)
         for c in closed_range(1, C):
             efsm.add_state(c,
                            output_events[assignment.output_event[c] - 1],
@@ -357,7 +368,7 @@ class EFSM:
 
     @property
     def initial_state(self):
-        if self._initial_state:
+        if hasattr(self, '_initial_state'):
             return self._initial_state
         else:
             if self.states:
@@ -407,27 +418,32 @@ class EFSM:
                 log_debug(f'└──{state.transitions[-1]}')
 
     def get_gv_string(self):
-        state_numbers = {state: i for i, state in enumerate(self.states.values())}
         lines = ['digraph {',
                  # '    rankdir=LR;'
                  '    // States',
                  '    { node []',
-                 *(f'      {state_numbers[state]} [label="{state.id}:{state.output_event}({state.algorithm_0}_{state.algorithm_1})"];'
+                 *(f'      {state.id} [label="{state.id}:{state.output_event}({state.algorithm_0}_{state.algorithm_1})"];'
                    for state in self.states.values()),
                  '    }',
                  '    // Transitions',
-                 *(f'    {state_numbers[transition.source]} -> {state_numbers[transition.destination]} [label="{k}:{transition.input_event}/{transition.guard}"];'
+                 *(f'    {transition.source.id} -> {transition.destination.id} [label="{k}:{transition.input_event}/{transition.guard.__str_gv__()}"];'
                      for state in self.states.values() for k, transition in enumerate(state.transitions, start=1)),
                  '}']
         return '\n'.join(lines)
 
-    def get_fbt_string(self, tree):
+    def get_fbt_string(self):
         from lxml import etree
+
+        def _r():
+            return str(random.randint(1, 1000))
+
+        tree = self.scenario_tree
 
         FBType = etree.Element('FBType')
 
         etree.SubElement(FBType, 'Identification', Standard='61499-2')
-        etree.SubElement(FBType, 'VersionInfo', Organization='nxtControl GmbH', Version='0.0', Author='fbSAT', Date='2011-08-30', Remarks='Template')
+        etree.SubElement(FBType, 'VersionInfo', Organization='nxtControl GmbH', Version='0.0',
+                         Author='fbSAT', Date='2011-08-30', Remarks='Template')
         InterfaceList = etree.SubElement(FBType, 'InterfaceList')
         BasicFB = etree.SubElement(FBType, 'BasicFB')
 
@@ -455,29 +471,23 @@ class EFSM:
         for output_event in tree.output_events:
             e = etree.SubElement(EventOutputs, 'Event', Name=output_event)
             if output_event != 'INITO':
-                for output_variable_name in tree.output_variable_names:
-                    etree.SubElement(e, 'With', Var=output_variable_name)
+                for name in tree.output_variable_names:
+                    etree.SubElement(e, 'With', Var=name)
 
         # BasicFB::ECC declaration
         ECC = etree.SubElement(BasicFB, 'ECC')
-        etree.SubElement(ECC, 'ECState', Name='START', Comment='Initial state',
-                         x=str(random.randint(1, 1000)), y=str(random.randint(1, 1000)))
+        etree.SubElement(ECC, 'ECState', Name='START', Comment='Initial state', x=_r(), y=_r())
         for state in self.states.values():
-            s = etree.SubElement(ECC, 'ECState', Name=f's_{state.id}',
-                                 x=str(random.randint(1, 1000)),
-                                 y=str(random.randint(1, 1000)))
+            s = etree.SubElement(ECC, 'ECState', Name=f's_{state.id}', x=_r(), y=_r())
             etree.SubElement(s, 'ECAction', Algorithm=f'{state.output_event}_{state.algorithm_0}_{state.algorithm_1}')
 
-        etree.SubElement(ECC, 'ECTransition', Source='START', Destination=f's_1', Condition='INIT',
-                         x=str(random.randint(1, 1000)), y=str(random.randint(1, 1000)))
+        etree.SubElement(ECC, 'ECTransition', Source='START', Destination=f's_1', Condition='INIT', x=_r(), y=_r())
         for state in self.states.values():
             for transition in state.transitions:
-                etree.SubElement(ECC, 'ECTransition',
+                etree.SubElement(ECC, 'ECTransition', x=_r(), y=_r(),
                                  Source=f's_{transition.source.id}',
                                  Destination=f's_{transition.destination.id}',
-                                 Condition=f'{transition.input_event}&{transition.guard.__str_nice__()}',
-                                 x=str(random.randint(1, 1000)),
-                                 y=str(random.randint(1, 1000)))
+                                 Condition=f'{transition.input_event}&{transition.guard.__str_fbt__()}')
 
         # BasicFB::Algorithms declaration
         algorithms = set()
@@ -485,7 +495,8 @@ class EFSM:
             algorithms.add((state.output_event, state.algorithm_0, state.algorithm_1))
         for output_event, algorithm_0, algorithm_1 in algorithms:
             a = etree.SubElement(BasicFB, 'Algorithm', Name=f'{output_event}_{algorithm_0}_{algorithm_1}')
-            etree.SubElement(a, 'ST', Text=f'{output_event} := FALSE;\n{algorithm2st(algorithm_0, algorithm_1)}\n')
+            st = algorithm2st(tree.output_variable_names, algorithm_0, algorithm_1)
+            etree.SubElement(a, 'ST', Text=f'{output_event} := FALSE;\n{st}\n')
 
         return etree.tostring(FBType, encoding='UTF-8', xml_declaration=True, pretty_print=True).decode()
 
@@ -495,17 +506,33 @@ class EFSM:
         with open(filename, 'w') as f:
             f.write(self.get_gv_string() + '\n')
 
-    def write_fbt(self, filename, scenario_tree):
+    def write_fbt(self, filename):
         log_debug(f'Dumping EFSM to <{filename}>...')
 
         with open(filename, 'w') as f:
-            f.write(self.get_fbt_string(scenario_tree))
+            f.write(self.get_fbt_string())
 
-    def verify(self, scenario_tree):
+    def dump(self, prefix):
+        log_debug('Dumping EFSM...')
+
+        filename_gv = prefix + '.gv'
+        self.write_gv(filename_gv)
+
+        output_format = 'svg'
+        cmd = f'dot -T{output_format} {filename_gv} -O'
+        log_debug(cmd, symbol='$')
+        os.system(cmd)
+
+        filename_fbt = prefix + '.fbt'
+        self.write_fbt(filename_fbt)
+
+        log_debug('Done dumping EFSM')
+
+    def verify(self):
         log_info('Verifying...')
         time_start_verify = time.time()
 
-        tree = scenario_tree
+        tree = self.scenario_tree
         root = tree[1]
 
         for path in tree.paths_to_leaves():
