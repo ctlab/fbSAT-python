@@ -286,6 +286,44 @@ class EFSM:
         self.states = OrderedDict()
 
     @classmethod
+    def new_with_full_guards(cls, scenario_tree, assignment):
+        log_debug('Building EFSM with full guards...')
+        time_start_build = time.time()
+
+        tree = scenario_tree
+        C = assignment.C
+        E = tree.E
+        U = tree.U
+        input_events = tree.input_events    # [str]^E  0-based
+        output_events = tree.output_events  # [str]^O  0-based
+        unique_input = tree.unique_input  # [1..U, 1..X]:bool
+
+        efsm = cls(scenario_tree)
+        for c in closed_range(1, C):
+            efsm.add_state(c,
+                           output_events[assignment.output_event[c] - 1],
+                           assignment.algorithm_0[c],
+                           assignment.algorithm_1[c])
+        efsm.initial_state = 1
+
+        for c in closed_range(1, C):
+            for e in closed_range(1, E):
+                for u in closed_range(1, U):
+                    dest = assignment.transition[c][e][u]
+                    if dest != c:
+                        guard = FullGuard(unique_input[u])
+                        # guard = ParseTreeGuard.from_input(unique_input[u])
+                        efsm.add_transition(c, dest, input_events[e - 1], guard)
+
+        if efsm.number_of_states != assignment.C:
+            log_error(f'Inequal number of states: efsm has {efsm.number_of_states}, assignment has {assignment.C}')
+        if efsm.number_of_transitions != assignment.T:
+            log_error(f'Inequal number of transitions: efsm has {efsm.number_of_transitions}, assignment has {assignment.T}')
+
+        log_debug(f'Done building EFSM with {efsm.number_of_states} states and {efsm.number_of_transitions} transitions in {time.time() - time_start_build:.2f} s')
+        return efsm
+
+    @classmethod
     def new_with_truth_tables(cls, scenario_tree, assignment):
         log_debug('Building EFSM with truth tables...')
         time_start_build = time.time()

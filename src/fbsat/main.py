@@ -27,6 +27,7 @@ CONTEXT_SETTINGS = dict(
 @click.command(context_settings=CONTEXT_SETTINGS)
 @click.argument('strategy', type=click.Choice(['old-basic', 'old-basic2', 'old-minimize',
                                                'old-combined', 'old-combined2', 'old-combined3',
+                                               'full', 'full-min',
                                                'partial', 'partial-min',
                                                'complete', 'complete-min',
                                                'minimize']))
@@ -207,30 +208,74 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
                       is_reuse=is_reuse)
         InstanceCombined3(**config).run()
 
+    # ===== NEW STRATEGIES =====
+
+    elif strategy == 'full':
+        log_info('Full strategy')
+        if K is not None:
+            log_warn(f'Ignoring specified K={K}')
+        if P is not None:
+            log_warn(f'Ignoring specified P={P}')
+        if N is not None:
+            log_warn(f'Ignoring specified N={N}')
+        config = dict(scenario_tree=scenario_tree,
+                      C=C,
+                      use_bfs=use_bfs,
+                      solver_cmd=sat_solver,
+                      outdir=outdir)
+        task = FullAutomatonTask(**config)
+        full_automaton = task.run(T)  # noqa
+        task.finalize()
+
+    elif strategy == 'full-min':
+        log_info('MinimalFull strategy')
+        if K is not None:
+            log_warn(f'Ignoring specified K={K}')
+        if P is not None:
+            log_warn(f'Ignoring specified P={P}')
+        if N is not None:
+            log_warn(f'Ignoring specified N={N}')
+        config = dict(scenario_tree=scenario_tree,
+                      C=C, T=T,
+                      use_bfs=use_bfs,
+                      solver_cmd=sat_solver,
+                      outdir=outdir)
+        task = MinimalFullAutomatonTask(**config)
+        minimal_full_automaton = task.run()  # noqa
+
     elif strategy == 'partial':
         log_info('Partial strategy')
-        assert C is not None
+        if P is not None:
+            log_warn(f'Ignoring specified P={P}')
+        if N is not None:
+            log_warn(f'Ignoring specified N={N}')
         config = dict(scenario_tree=scenario_tree,
                       C=C, K=K,
                       use_bfs=use_bfs,
                       solver_cmd=sat_solver,
                       outdir=outdir)
         task = PartialAutomatonTask(**config)
-        partial_automaton = task.run(T)
+        partial_automaton = task.run(T)  # noqa
         task.finalize()
+
     elif strategy == 'partial-min':
         log_info('MinimalPartial strategy')
+        if P is not None:
+            log_warn(f'Ignoring specified P={P}')
+        if N is not None:
+            log_warn(f'Ignoring specified N={N}')
         config = dict(scenario_tree=scenario_tree,
                       C=C, K=K, T=T,
                       use_bfs=use_bfs,
                       solver_cmd=sat_solver,
                       outdir=outdir)
         task = MinimalPartialAutomatonTask(**config)
-        minimal_partial_automaton = task.run()
+        minimal_partial_automaton = task.run()  # noqa
+
     elif strategy == 'complete':
         log_info('Complete strategy')
-        assert C is not None
-        assert P is not None
+        if T is not None:
+            log_warn(f'Ignoring specified T={T}')
         config = dict(scenario_tree=scenario_tree,
                       C=C, K=K, P=P,
                       use_bfs=use_bfs,
@@ -240,10 +285,13 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
                       is_incremental=is_incremental,
                       outdir=outdir)
         task = CompleteAutomatonTask(**config)
-        complete_automaton = task.run(N)
+        complete_automaton = task.run(N)  # noqa
         task.finalize()
+
     elif strategy == 'complete-min':
         log_info('MinimalComplete strategy')
+        if T is not None:
+            log_warn(f'Ignoring specified T={T}')
         config = dict(scenario_tree=scenario_tree,
                       C=C, K=K, P=P, N=N,
                       use_bfs=use_bfs,
@@ -253,18 +301,23 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
                       is_incremental=is_incremental,
                       outdir=outdir)
         task = MinimalCompleteAutomatonTask(**config)
-        minimal_complete_automaton = task.run()
+        minimal_complete_automaton = task.run()  # noqa
+
     elif strategy == 'minimize':
         log_info('MinimizeAllGuards strategy')
         if K is not None:
             log_warn(f'Ignoring specified K={K}')
+        if P is not None:
+            log_warn(f'Ignoring specified P={P}')
+        if N is not None:
+            log_warn(f'Ignoring specified N={N}')
         config = dict(scenario_tree=scenario_tree,
                       C=C, T=T,
                       use_bfs=use_bfs,
                       solver_cmd=sat_solver,
                       outdir=outdir)
         task = MinimizeAllGuardsTask(**config)
-        minimized_automaton = task.run()
+        minimized_automaton = task.run()  # noqa
 
     log_br()
     log_success(f'All done in {time.time() - time_start:.2f} s')
