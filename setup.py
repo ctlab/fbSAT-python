@@ -41,7 +41,8 @@ def main():
             'console_scripts': [
                 'fbsat = fbsat:cli',
             ]
-        }
+        },
+        zip_safe=False,
     )
 
 
