@@ -27,7 +27,7 @@ CONTEXT_SETTINGS = dict(
 @click.command(context_settings=CONTEXT_SETTINGS)
 @click.argument('strategy', type=click.Choice(['old-basic', 'old-basic2', 'old-minimize',
                                                'old-combined', 'old-combined2', 'old-combined3',
-                                               'basic', 'basic-min',
+                                               'partial', 'partial-min',
                                                'complete', 'complete-min',
                                                'minimize']))
 @click.option('-i', '--scenarios', 'filename_scenarios', metavar='<path/->', required=True,
@@ -207,26 +207,26 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
                       is_reuse=is_reuse)
         InstanceCombined3(**config).run()
 
-    elif strategy == 'basic':
-        log_info('Basic strategy')
+    elif strategy == 'partial':
+        log_info('Partial strategy')
         assert C is not None
         config = dict(scenario_tree=scenario_tree,
                       C=C, K=K,
                       use_bfs=use_bfs,
                       solver_cmd=sat_solver,
                       outdir=outdir)
-        task = BasicAutomatonTask(**config)
-        basic_automaton = task.run(T)
+        task = PartialAutomatonTask(**config)
+        partial_automaton = task.run(T)
         task.finalize()
-    elif strategy == 'basic-min':
-        log_info('MinimalBasic strategy')
+    elif strategy == 'partial-min':
+        log_info('MinimalPartial strategy')
         config = dict(scenario_tree=scenario_tree,
                       C=C, K=K, T=T,
                       use_bfs=use_bfs,
                       solver_cmd=sat_solver,
                       outdir=outdir)
-        task = MinimalBasicAutomatonTask(**config)
-        minimal_basic_automaton = task.run()
+        task = MinimalPartialAutomatonTask(**config)
+        minimal_partial_automaton = task.run()
     elif strategy == 'complete':
         log_info('Complete strategy')
         assert C is not None

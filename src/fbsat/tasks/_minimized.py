@@ -1,11 +1,10 @@
 import os
 import subprocess
 import time
-from collections import namedtuple
 
 import pymzn
 
-from . import BasicAutomatonTask, MinimalBasicAutomatonTask
+from . import PartialAutomatonTask, MinimalPartialAutomatonTask
 from ..efsm import ParseTreeGuard
 from ..printers import log_br, log_debug, log_error, log_info, log_success, log_warn
 from ..utils import closed_range, s2b
@@ -176,17 +175,18 @@ class MinimizeGuardTask:
 
 class MinimizeAllGuardsTask:
 
-    def __init__(self, scenario_tree, basic_automaton=None, C=None, K=None, T=None, *, use_bfs=True, solver_cmd=None, write_strategy=None, outdir=''):
+    def __init__(self, scenario_tree, incomplete_automaton=None, C=None, K=None, T=None, *, use_bfs=True, solver_cmd=None, write_strategy=None, outdir=''):
         self.scenario_tree = scenario_tree
-        self.basic_automaton = basic_automaton
+        self.incomplete_automaton = incomplete_automaton
         self.C = C
         self.K = K
         self.T = T
         self.outdir = outdir
-        self.basic_config = dict(use_bfs=use_bfs,
-                                 solver_cmd=solver_cmd,
-                                 write_strategy=write_strategy,
-                                 outdir=outdir)
+        self.subtask_config = dict(C=self.C, K=self.K,
+                                           use_bfs=use_bfs,
+                                             solver_cmd=solver_cmd,
+                                             write_strategy=write_strategy,
+                                             outdir=outdir)
 
     def get_stem(self, C, K, T):
         return f'minimized_{self.scenario_tree.scenarios_stem}_C{C}_K{K}_T{T}'
@@ -206,15 +206,12 @@ class MinimizeAllGuardsTask:
                 config = dict(scenario_tree=self.scenario_tree,
                               C=self.C, K=self.K,
                               **self.basic_config)
-                task = BasicAutomatonTask(**config)
+                task = PartialAutomatonTask(self.scenario_tree, **self.subtask_config_partial)
                 automaton = task.run(self.T)
             else:
-                if self.K is not None:
-                    log_warn(f'Ignoring specified K={self.K}')
-                config = dict(scenario_tree=self.scenario_tree,
-                              C=self.C,
-                              **self.basic_config)
-                task = MinimalBasicAutomatonTask(**config)
+                # if self.K is not None:
+                #     log_warn(f'Ignoring specified K={self.K}')
+                task = MinimalPartialAutomatonTask(self.scenario_tree, **self.subtask_config)
                 automaton = task.run()
 
         if automaton:

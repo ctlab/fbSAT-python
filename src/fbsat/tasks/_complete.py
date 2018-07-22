@@ -3,7 +3,7 @@ import time
 from collections import namedtuple
 from functools import partial
 
-from . import MinimalBasicAutomatonTask, Task
+from . import Task
 from ..efsm import EFSM
 from ..printers import log_br, log_debug, log_error, log_info, log_success
 from ..solver import IncrementalSolver, StreamSolver

@@ -9,12 +9,12 @@ from ..printers import log_br, log_debug, log_error, log_info, log_success
 from ..solver import IncrementalSolver, StreamSolver
 from ..utils import closed_range, parse_raw_assignment_algo, parse_raw_assignment_bool, parse_raw_assignment_int
 
-__all__ = ['BasicAutomatonTask']
+__all__ = ['PartialAutomatonTask']
 
 VARIABLES = 'color transition output_event algorithm_0 algorithm_1 first_fired not_fired'
 
 
-class BasicAutomatonTask(Task):
+class PartialAutomatonTask(Task):
 
     Reduction = namedtuple('Reduction', VARIABLES + ' totalizer')
     Assignment = namedtuple('Assignment', VARIABLES + ' C K T')
@@ -46,9 +46,9 @@ class BasicAutomatonTask(Task):
         C = self.C
         K = self.K
         if T is None:
-            return f'basic_{self.scenario_tree.scenarios_stem}_C{C}_K{K}'
+            return f'partial_{self.scenario_tree.scenarios_stem}_C{C}_K{K}'
         else:
-            return f'basic_{self.scenario_tree.scenarios_stem}_C{C}_K{K}_T{T}'
+            return f'partial_{self.scenario_tree.scenarios_stem}_C{C}_K{K}_T{T}'
 
     def get_filename_prefix(self, T=None):
         return os.path.join(self.outdir, self.get_stem(T))
@@ -62,7 +62,7 @@ class BasicAutomatonTask(Task):
         return self.solver.number_of_clauses
 
     def run(self, T=None, *, fast=False):
-        log_debug(f'BasicAutomatonTask: running for T={T}...')
+        log_debug(f'PartialAutomatonTask: running for T={T}...')
         time_start_run = time.time()
 
         self._declare_base_reduction()
@@ -74,17 +74,17 @@ class BasicAutomatonTask(Task):
         assignment = self.parse_raw_assignment(raw_assignment)
 
         if fast:
-            log_debug(f'BasicAutomatonTask: done for T={T} in {time.time() - time_start_run:.2f} s')
+            log_debug(f'PartialAutomatonTask: done for T={T} in {time.time() - time_start_run:.2f} s')
             return assignment
         else:
             automaton = self.build_efsm(assignment)
 
-            log_debug(f'BasicAutomatonTask: done for T={T} in {time.time() - time_start_run:.2f} s')
+            log_debug(f'PartialAutomatonTask: done for T={T} in {time.time() - time_start_run:.2f} s')
             log_br()
             if automaton:
-                log_success(f'Basic automaton has {automaton.number_of_states} states and {automaton.number_of_transitions} transitions')
+                log_success(f'Partial automaton has {automaton.number_of_states} states and {automaton.number_of_transitions} transitions')
             else:
-                log_error(f'Basic automaton was not found')
+                log_error(f'Partial automaton was not found')
             return automaton
 
     def finalize(self):
@@ -469,13 +469,13 @@ class BasicAutomatonTask(Task):
             return None
 
         log_br()
-        log_info('BasicAutomatonTask: building automaton...')
+        log_info('PartialAutomatonTask: building automaton...')
         automaton = EFSM.new_with_truth_tables(self.scenario_tree, assignment)
 
         if dump:
             automaton.dump(self.get_filename_prefix(assignment.T))
 
-        log_success('Minimal basic automaton:')
+        log_success('Minimal partial automaton:')
         automaton.pprint()
         automaton.verify()
 

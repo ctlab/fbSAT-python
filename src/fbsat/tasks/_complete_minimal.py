@@ -1,7 +1,7 @@
 import os
 import time
 
-from . import CompleteAutomatonTask, MinimalBasicAutomatonTask, Task
+from . import CompleteAutomatonTask, MinimalPartialAutomatonTask, Task
 from ..efsm import EFSM
 from ..printers import log_br, log_debug, log_error, log_info, log_success
 from ..utils import parse_raw_assignment_algo, parse_raw_assignment_bool, parse_raw_assignment_int, s2b
@@ -18,11 +18,11 @@ class MinimalCompleteAutomatonTask(Task):
         self.P = P
         self.N_init = N
         self.outdir = outdir
-        self.subtask_config_basic = dict(use_bfs=use_bfs,
-                                         solver_cmd=solver_cmd,
-                                         is_incremental=is_incremental,
-                                         outdir=outdir)
-        self.subtask_config_complete = dict(**self.subtask_config_basic,
+        self.subtask_config_minpartial = dict(use_bfs=use_bfs,
+                                              solver_cmd=solver_cmd,
+                                              is_incremental=is_incremental,
+                                              outdir=outdir)
+        self.subtask_config_complete = dict(**self.subtask_config_minpartial,
                                             is_distinct=is_distinct,
                                             is_forbid_or=is_forbid_or)
 
@@ -50,7 +50,7 @@ class MinimalCompleteAutomatonTask(Task):
 
         if self.C is None:
             log_debug('MinimalCompleteAutomatonTask: searching for minimal C...')
-            task = MinimalBasicAutomatonTask(self.scenario_tree, **self.subtask_config_minbasic)
+            task = MinimalPartialAutomatonTask(self.scenario_tree, **self.subtask_config_minpartial)
             assignment = task.run(fast=True, only_C=True)
             C = assignment.C
             log_debug(f'MinimalCompleteAutomatonTask: found minimal C={C}')

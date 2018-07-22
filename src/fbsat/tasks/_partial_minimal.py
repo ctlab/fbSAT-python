@@ -2,15 +2,14 @@ import itertools
 import os
 import time
 
-from . import BasicAutomatonTask, Task
+from . import PartialAutomatonTask, Task
 from ..efsm import EFSM
-from ..printers import log_br, log_debug, log_error, log_info, log_success, log_warn
-from ..utils import closed_range
+from ..printers import log_br, log_debug, log_error, log_info, log_success
 
-__all__ = ['MinimalBasicAutomatonTask']
+__all__ = ['MinimalPartialAutomatonTask']
 
 
-class MinimalBasicAutomatonTask(Task):
+class MinimalPartialAutomatonTask(Task):
 
     def __init__(self, scenario_tree, *, C=None, K=None, T=None, use_bfs=True, solver_cmd=None, is_incremental=False, outdir=''):
         self.scenario_tree = scenario_tree
@@ -24,38 +23,38 @@ class MinimalBasicAutomatonTask(Task):
                                    outdir=outdir)
 
     def get_stem(self, C, K, T):
-        return f'minimal_basic_{self.scenario_tree.scenarios_stem}_C{C}_K{K}_T{T}'
+        return f'minimal_partial_{self.scenario_tree.scenarios_stem}_C{C}_K{K}_T{T}'
 
     def get_filename_prefix(self, C, K, T):
         return os.path.join(self.outdir, self.get_stem(C, K, T))
 
     def run(self, *, fast=False, only_C=False):
-        log_debug(f'MinimalBasicAutomatonTask: running...')
+        log_debug(f'MinimalPartialAutomatonTask: running...')
         time_start_run = time.time()
         best = None
 
         if self.C is None:
-            log_debug('MinimalBasicAutomatonTask: searching for minimal C...')
+            log_debug('MinimalPartialAutomatonTask: searching for minimal C...')
             for C in itertools.islice(itertools.count(1), 15):
                 log_br()
                 log_info(f'Trying C = {C}...')
-                task = BasicAutomatonTask(self.scenario_tree, C=C, K=self.K, **self.subtask_config)
+                task = PartialAutomatonTask(self.scenario_tree, C=C, K=self.K, **self.subtask_config)
                 assignment = task.run(self.T_init, fast=True)
                 if assignment:
                     best = assignment
-                    log_debug(f'MinimalBasicAutomatonTask: found minimal C={C}')
+                    log_debug(f'MinimalPartialAutomatonTask: found minimal C={C}')
                     break
                 else:
                     task.finalize()
             else:
-                log_error('MinimalBasicAutomatonTask: minimal C was not found')
+                log_error('MinimalPartialAutomatonTask: minimal C was not found')
         else:
-            log_debug(f'MinimalBasicAutomatonTask: using specified C={self.C}')
-            task = BasicAutomatonTask(self.scenario_tree, C=self.C, K=self.K, **self.subtask_config)
+            log_debug(f'MinimalPartialAutomatonTask: using specified C={self.C}')
+            task = PartialAutomatonTask(self.scenario_tree, C=self.C, K=self.K, **self.subtask_config)
             best = task.run(self.T_init, fast=True)
 
         if not only_C and best:
-            log_debug('MinimalBasicAutomatonTask: searching for minimal T...')
+            log_debug('MinimalPartialAutomatonTask: searching for minimal T...')
             assignment = best
             while True:
                 best = assignment
@@ -64,23 +63,23 @@ class MinimalBasicAutomatonTask(Task):
                 log_info(f'Trying T={T}...')
                 assignment = task.run(T, fast=True)
                 if assignment is None:
-                    log_debug(f'MinimalBasicAutomatonTask: found minimal T={best.T}')
+                    log_debug(f'MinimalPartialAutomatonTask: found minimal T={best.T}')
                     break
 
         task.finalize()
 
         if fast:
-            log_debug(f'MinimalBasicAutomatonTask: done in {time.time() - time_start_run:.2f} s')
+            log_debug(f'MinimalPartialAutomatonTask: done in {time.time() - time_start_run:.2f} s')
             return best
         else:
             automaton = self.build_efsm(best)
 
-            log_debug(f'MinimalBasicAutomatonTask: done in {time.time() - time_start_run:.2f} s')
+            log_debug(f'MinimalPartialAutomatonTask: done in {time.time() - time_start_run:.2f} s')
             log_br()
             if automaton:
-                log_success(f'Minimal basic automaton has {automaton.number_of_states} states and {automaton.number_of_transitions} transitions')
+                log_success(f'Minimal partial automaton has {automaton.number_of_states} states and {automaton.number_of_transitions} transitions')
             else:
-                log_error(f'Minimal basic automaton was not found')
+                log_error(f'Minimal partial automaton was not found')
             return automaton
 
     def build_efsm(self, assignment, *, dump=True):
@@ -88,13 +87,13 @@ class MinimalBasicAutomatonTask(Task):
             return None
 
         log_br()
-        log_info('MinimalBasicAutomatonTask: building automaton...')
+        log_info('MinimalPartialAutomatonTask: building automaton...')
         automaton = EFSM.new_with_truth_tables(self.scenario_tree, assignment)
 
         if dump:
             automaton.dump(self.get_filename_prefix(assignment.C, assignment.K, assignment.T))
 
-        log_success('Minimal basic automaton:')
+        log_success('Minimal partial automaton:')
         automaton.pprint()
         automaton.verify()
 
