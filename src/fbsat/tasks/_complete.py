@@ -768,6 +768,34 @@ class CompleteAutomatonTask(Task):
                         for p in closed_range(1, P):
                             add_clause(-nodetype[c][e][k][p][2])
 
+        # A.6. Left terminal is lesser then right
+        # for c in closed_range(1, C):
+        #     for e in closed_range(1, E):
+        #         for k in closed_range(1, K):
+        #             for p in closed_range(1, P - 2):
+        #                 for ch in closed_range(p + 1, P - 1):
+        #                     for nt in [1, 2]:
+        #                         for x in closed_range(1, X):
+        #                             for x_ in closed_range(1, x):
+        #                                 # (nodetype[p,1or2] & child_left[p,ch] & terminal[ch,x]) => AND{x_<=x}(~terminal[ch+1,x_])
+        #                                 add_clause(-nodetype[c][e][k][p][nt],
+        #                                            -child_left[c][e][k][p][ch],
+        #                                            -terminal[c][e][k][ch][x],
+        #                                            -terminal[c][e][k][ch + 1][x_])
+
+        # A.7. Forbid left-non-terminal and right-terminal [right=>left]
+        # for c in closed_range(1, C):
+        #     for e in closed_range(1, E):
+        #         for k in closed_range(1, K):
+        #             for p in closed_range(1, P - 2):
+        #                 for ch in closed_range(p + 1, P - 1):
+        #                     for nt in [1, 2]:
+        #                         # (nodetype[p,1or2] & child_left[p,ch] & ~nodetype[ch,0]) => ~nodetype[ch+1,0]
+        #                         add_clause(-nodetype[c][e][k][p][nt],
+        #                                    -child_left[c][e][k][p][ch],
+        #                                    nodetype[c][e][k][ch][0],
+        #                                    ~nodetype[c][e][k][ch + 1][0])
+
         log_debug(f'A. Clauses: {so_far()}', symbol='STAT')
 
         # =-=-=-=-=
