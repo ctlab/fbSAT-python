@@ -6,7 +6,7 @@ from functools import partial
 from . import Task
 from ..efsm import EFSM
 from ..printers import log_br, log_debug, log_error, log_info, log_success
-from ..solver import IncrementalSolver, StreamSolver
+from ..solver import IncrementalSolver, StreamSolver, FileSolver
 from ..utils import closed_range, parse_raw_assignment_algo, parse_raw_assignment_bool, parse_raw_assignment_int
 
 __all__ = ['PartialAutomatonTask']
@@ -19,7 +19,7 @@ class PartialAutomatonTask(Task):
     Reduction = namedtuple('Reduction', VARIABLES + ' totalizer')
     Assignment = namedtuple('Assignment', VARIABLES + ' C K T')
 
-    def __init__(self, scenario_tree, *, C, K=None, use_bfs=True, solver_cmd=None, is_incremental=False, outdir=''):
+    def __init__(self, scenario_tree, *, C, K=None, use_bfs=True, solver_cmd=None, is_incremental=False, is_filesolver=False, outdir=''):
         assert C is not None
 
         if K is None:
@@ -31,6 +31,7 @@ class PartialAutomatonTask(Task):
         self.use_bfs = use_bfs
         self.outdir = outdir
         self.is_incremental = is_incremental
+        self.is_filesolver = is_filesolver
         self.solver_config = dict(cmd=solver_cmd)
         self._new_solver()
 
@@ -41,6 +42,8 @@ class PartialAutomatonTask(Task):
         # TODO: pass some filename_prefix to solver
         if self.is_incremental:
             self.solver = IncrementalSolver(**self.solver_config)
+        elif self.is_filesolver:
+            self.solver = FileSolver(**self.solver_config, filename_prefix=self.get_filename_prefix())
         else:
             self.solver = StreamSolver(**self.solver_config)
 

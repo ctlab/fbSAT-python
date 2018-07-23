@@ -67,6 +67,8 @@ CONTEXT_SETTINGS = dict(
               help='Do minimize')
 @click.option('--incremental', 'is_incremental', is_flag=True,
               help='Use incremental solver')
+@click.option('--filesolver', 'is_filesolver', is_flag=True,
+              help='Use file solver')
 @click.option('--reuse', 'is_reuse', is_flag=True,
               help='Reuse generated base reduction and objective function')
 @click.option('--bfs/--no-bfs', 'use_bfs', is_flag=True,
@@ -96,8 +98,9 @@ CONTEXT_SETTINGS = dict(
 @click.option('--automaton', help='File with pickled automaton')
 @click.version_option(__version__)
 def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_variable_names,
-        filename_prefix, outdir, C, K, P, N, T, Cmax, is_minimize, is_incremental, is_reuse,
-        use_bfs, is_distinct, is_forbid_or, sat_solver, sat_isolver, mzn_solver, write_strategy, automaton):
+        filename_prefix, outdir, C, K, P, N, T, Cmax, is_minimize, is_incremental, is_filesolver,
+        is_reuse, use_bfs, is_distinct, is_forbid_or, sat_solver, sat_isolver, mzn_solver,
+        write_strategy, automaton):
     log_info('Welcome!')
     time_start = time.time()
     # =====================
@@ -253,6 +256,8 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
                       C=C, K=K,
                       use_bfs=use_bfs,
                       solver_cmd=sat_solver,
+                      is_incremental=is_incremental,
+                      is_filesolver=is_filesolver,
                       outdir=outdir)
         task = PartialAutomatonTask(**config)
         partial_automaton = task.run(T)  # noqa

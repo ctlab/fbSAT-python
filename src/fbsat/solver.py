@@ -8,7 +8,7 @@ from io import StringIO
 from .printers import log_debug, log_error, log_success
 from .utils import closed_range
 
-__all__ = ['StreamSolver', 'IncrementalSolver']
+__all__ = ['StreamSolver', 'FileSolver', 'IncrementalSolver']
 
 
 class Solver(ABC):
@@ -122,9 +122,8 @@ class Solver(ABC):
 
 class StreamSolver(Solver):
 
-    def __init__(self, cmd, filename_prefix=None):
+    def __init__(self, cmd):
         self.cmd = cmd
-        self.filename_prefix = filename_prefix
         self.stream = StringIO()
         self.number_of_variables = 0
         self.number_of_clauses = 0
@@ -170,9 +169,55 @@ class StreamSolver(Solver):
             log_error(f'UNSAT in {time.time() - time_start_solve:.2f} s')
 
 
+class FileSolver(StreamSolver):
+
+    def __init__(self, cmd, filename_prefix=''):
+        super().__init__(cmd)
+        self.filename_prefix = filename_prefix
+
+    def solve(self):
+        log_debug(f'Solving with cmd="{self.cmd}", prefix="{self.filename_prefix}"...')
+        time_start_solve = time.time()
+
+        filename_cnf = f'{self.filename_prefix}.cnf'
+        log_debug(f'Writing to {filename_cnf}...')
+        with open(filename_cnf, 'w') as f:
+            f.write(f'p cnf {self.number_of_variables} {self.number_of_clauses}\n')
+            self.stream.seek(0)
+            shutil.copyfileobj(self.stream, f)
+
+        cmd = f'{self.cmd} {filename_cnf}'
+        log_debug(cmd, symbol='$')
+        p = subprocess.run(cmd, shell=True, universal_newlines=True, stdout=subprocess.PIPE)
+        log_debug(f'returncode = {p.returncode}')
+
+        is_sat = None
+        raw_assignment = [None]  # 1-based
+
+        for line in p.stdout.split('\n'):
+            if line.startswith('s SAT'):
+                is_sat = True
+            elif line.startswith('v '):
+                for value in map(int, line[2:].split()):
+                    if value == 0:
+                        break
+                    assert abs(value) == len(raw_assignment)
+                    raw_assignment.append(value)
+            elif line.startswith('s UNSAT'):
+                is_sat = False
+
+        if is_sat is None:
+            log_error(f'UNSAT or ERROR in {time.time() - time_start_solve:.2f} s')
+        elif is_sat:
+            log_success(f'SAT in {time.time() - time_start_solve:.2f} s')
+            return raw_assignment
+        else:
+            log_error(f'UNSAT in {time.time() - time_start_solve:.2f} s')
+
+
 class IncrementalSolver(Solver):
 
-    def __init__(self, cmd, filename_prefix=None):
+    def __init__(self, cmd, filename_prefix=''):
         # self.cmd = cmd
         # self.filename_prefix = filename_prefix
         self.process = subprocess.Popen(cmd, shell=True, universal_newlines=True,
