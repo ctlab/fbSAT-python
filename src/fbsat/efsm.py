@@ -35,9 +35,10 @@ class FullGuard(Guard):
         return str(self)
 
     def __str_fbt__(self):
-        return ' & '.join({True: '', False: '~'}[value] + name
-                          for name, value in zip(ParseTreeGuard.Node.output_variable_names,
-                                                 self.input_values[1:]))
+        # FIXME: maybe use 'NOT' for boolean negation?
+        return '&'.join({True: '', False: '~'}[value] + name
+                        for name, value in zip(ParseTreeGuard.Node.output_variable_names,
+                                               self.input_values[1:]))
 
 
 class TruthTableGuard(Guard):
@@ -159,6 +160,7 @@ class ParseTreeGuard(Guard):
             elif self.nodetype == 2:  # OR
                 return f'({self.child_left.__str_fbt__()} OR {self.child_right.__str_fbt__()})'
             elif self.nodetype == 3:  # NOT
+                # FIXME: maybe use '~' for boolean negation?
                 return f'NOT {self.child_left.__str_fbt__()}'
             elif self.nodetype == 4:  # None
                 raise ValueError(f'why are you trying to display None-typed node?')
@@ -490,7 +492,8 @@ class EFSM:
 
         etree.SubElement(FBType, 'Identification', Standard='61499-2')
         etree.SubElement(FBType, 'VersionInfo', Organization='nxtControl GmbH', Version='0.0',
-                         Author='fbSAT', Date='2011-08-30', Remarks='Template')
+                         Author='fbSAT', Date='2011-08-30', Remarks='Template', Namespace='Main',
+                         Name='CentralController', Comment='Basic Function Block Type')
         InterfaceList = etree.SubElement(FBType, 'InterfaceList')
         BasicFB = etree.SubElement(FBType, 'BasicFB')
 
@@ -508,7 +511,7 @@ class EFSM:
             etree.SubElement(OutputVars, 'VarDeclaration', Name=output_variable_name, Type='BOOL')
 
         # InterfaceList::EventInputs declaration
-        for input_event in tree.input_events:
+        for input_event in ('INIT',) + tree.input_events:
             e = etree.SubElement(EventInputs, 'Event', Name=input_event)
             if input_event != 'INIT':
                 for input_variable_name in tree.predicate_names:
@@ -523,13 +526,13 @@ class EFSM:
 
         # BasicFB::ECC declaration
         ECC = etree.SubElement(BasicFB, 'ECC')
-        etree.SubElement(ECC, 'ECState', Name='START', Comment='Initial state', x=_r(), y=_r())
+        etree.SubElement(ECC, 'ECState', Name='START', x=_r(), y=_r())
         for state in self.states.values():
             s = etree.SubElement(ECC, 'ECState', Name=f's_{state.id}', x=_r(), y=_r())
             algorithm = f'{state.algorithm_0}_{state.algorithm_1}'
             etree.SubElement(s, 'ECAction', Algorithm=algorithm, Output=state.output_event)
 
-        etree.SubElement(ECC, 'ECTransition', Source='START', Destination=f's_1', Condition='INIT', x=_r(), y=_r())
+        etree.SubElement(ECC, 'ECTransition', Source='START', Destination=f's_{self.initial_state}', Condition='INIT', x=_r(), y=_r())
         for state in self.states.values():
             for transition in state.transitions:
                 etree.SubElement(ECC, 'ECTransition', x=_r(), y=_r(),
@@ -542,7 +545,7 @@ class EFSM:
         for algorithm_0, algorithm_1 in algorithms:
             a = etree.SubElement(BasicFB, 'Algorithm', Name=f'{algorithm_0}_{algorithm_1}')
             st = algorithm2st(tree.output_variable_names, algorithm_0, algorithm_1)
-            etree.SubElement(a, 'ST', Text=f'{output_event} := FALSE;\n{st}\n')
+            etree.SubElement(a, 'ST', Text=f'{output_event}:=FALSE;\n{st}')
 
         return etree.tostring(FBType, encoding='UTF-8', xml_declaration=True, pretty_print=True).decode()
 

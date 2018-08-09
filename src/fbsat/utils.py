@@ -44,14 +44,13 @@ def read_names(filename):
 
 def algorithm2st(output_variable_names, algorithm_0, algorithm_1):
     assert len(output_variable_names) == len(algorithm_0) == len(algorithm_1)
-    lines = []
+    st = ''
     for name, a0, a1 in zip(output_variable_names, algorithm_0, algorithm_1):
-        lines.append(f'IF {name} THEN')
-        lines.append(f'    {name} := { {"0":"FALSE", "1":"TRUE"}[a1] };')
-        lines.append(f'ELSE')
-        lines.append(f'    {name} := { {"0":"FALSE", "1":"TRUE"}[a0] };')
-        lines.append(f'ENDIF;')
-    return '\n'.join(lines)
+        if a0 == a1:
+            st += f'{name}:={ {"0":"FALSE", "1":"TRUE"}[a0] };'
+        elif a0 == '0':
+            st += f'{name}:=~{name};'
+    return st
 
 
 def b2s(data):
