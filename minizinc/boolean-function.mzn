@@ -98,7 +98,7 @@ constraint forall (p in 1..P-2) (
 % 3.5b OR: value is calculated as a disjunction of children
 constraint forall (p in 1..P-2) (
     nodetype[p] = 2 ->
-        forall (u in 1..U) (value[p, u] <-> child_value_left[p, u] /\ child_value_right[p, u])
+        forall (u in 1..U) (value[p, u] <-> child_value_left[p, u] \/ child_value_right[p, u])
 );
 
 % 4. NOT nodes constraints
