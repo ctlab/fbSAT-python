@@ -53,9 +53,9 @@ def algorithm2st(output_variable_names, algorithm_0, algorithm_1):
     return st
 
 
-def b2s(data):
+def b2s(data, *, s_True='1', s_False='0'):
     '''Converts 0-based bool array to string'''
-    return ''.join('1' if x else '0' for x in data)
+    return ''.join(s_True if x else s_False for x in data)
 
 
 def s2b(s, zero_based=False):
