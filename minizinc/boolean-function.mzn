@@ -130,13 +130,13 @@ constraint forall (p in 1..P-1, ch in p+1..P) (
 );
 
 % 4.4b NOT: child_value_right is False
-constraint forall (p in 1..P-1, ch in p+1..P) (
+constraint forall (p in 1..P-1) (
     nodetype[p] = 3 ->
-        forall (u in 1..U) (not child_value_left[p, u])
+        forall (u in 1..U) (not child_value_right[p, u])
 );
 
 % 4.5. NOT: value is calculated as a negation of child
-constraint forall (p in 1..P-1, ch in p+1..P) (
+constraint forall (p in 1..P-1) (
     nodetype[p] = 3 ->
         forall (u in 1..U) (value[p, u] <-> not child_value_left[p, u])
 );
