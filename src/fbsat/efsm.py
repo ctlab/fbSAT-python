@@ -1,5 +1,6 @@
 import os
 import time
+import pickle
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 import random
@@ -662,22 +663,25 @@ class EFSM:
         return s.getvalue()
 
     def write_gv(self, filename):
-        log_debug(f'Dumping EFSM to <{filename}>...')
+        log_debug(f'Dumping EFSM in GV format to <{filename}>...')
 
         with open(filename, 'w') as f:
             f.write(self.get_gv_string() + '\n')
 
     def write_fbt(self, filename):
-        log_debug(f'Dumping EFSM to <{filename}>...')
+        log_debug(f'Dumping EFSM in FBT format to <{filename}>...')
 
         with open(filename, 'w') as f:
             f.write(self.get_fbt_string())
 
     def write_smv(self, filename):
-        log_debug(f'Dumping EFSM to <{filename}>...')
+        log_debug(f'Dumping EFSM in SMV format to <{filename}>...')
 
-        with open(filename, 'w') as f:
-            f.write(self.get_smv_string())
+    def write_pkl(self, filename):
+        log_debug(f'Pickling EFSM to <{filename}>...')
+
+        with open(filename, 'wb') as f:
+            pickle.dump(self, f)
 
     def dump(self, prefix):
         filename_gv = prefix + '.gv'
@@ -693,6 +697,9 @@ class EFSM:
 
         filename_smv = prefix + '.smv'
         self.write_smv(filename_smv)
+
+        filename_pkl = prefix + '.pkl'
+        self.write_pkl(filename_pkl)
 
     def verify(self):
         log_info('Verifying...')
