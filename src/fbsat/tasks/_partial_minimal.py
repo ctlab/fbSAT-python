@@ -17,7 +17,8 @@ class MinimalPartialAutomatonTask(Task):
         self.K = K
         self.T_init = T
         self.outdir = outdir
-        self.subtask_config = dict(use_bfs=use_bfs,
+        self.subtask_config = dict(scenario_tree=scenario_tree,
+                                   use_bfs=use_bfs,
                                    solver_cmd=solver_cmd,
                                    is_incremental=is_incremental,
                                    outdir=outdir)
@@ -38,7 +39,7 @@ class MinimalPartialAutomatonTask(Task):
             for C in itertools.islice(itertools.count(1), 15):
                 log_br()
                 log_info(f'Trying C = {C}...')
-                task = PartialAutomatonTask(self.scenario_tree, C=C, K=self.K, **self.subtask_config)
+                task = PartialAutomatonTask(C=C, K=self.K, **self.subtask_config)
                 assignment = task.run(self.T_init, fast=True)
                 if assignment:
                     best = assignment
@@ -50,7 +51,7 @@ class MinimalPartialAutomatonTask(Task):
                 log_error('MinimalPartialAutomatonTask: minimal C was not found')
         else:
             log_debug(f'MinimalPartialAutomatonTask: using specified C={self.C}')
-            task = PartialAutomatonTask(self.scenario_tree, C=self.C, K=self.K, **self.subtask_config)
+            task = PartialAutomatonTask(C=self.C, K=self.K, **self.subtask_config)
             best = task.run(self.T_init, fast=True)
 
         if not only_C and best:

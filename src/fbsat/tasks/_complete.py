@@ -199,10 +199,10 @@ class CompleteAutomatonTask(Task):
         for v in closed_range(2, V):
             for c in closed_range(1, C):
                 if tree.output_event[v] == 0:
-                    # IF toe[v]=0 THEN color[v,c] <=> color[parent[v],c]
+                    # IF toe[v]=0 THEN color[v,c] <=> color[tp(v),c]
                     iff(color[v][c], color[tree.parent[v]][c])
                 else:
-                    # IF toe[v]!=0 THEN not (color[v,c] and color[parent[v],c])
+                    # IF toe[v]!=0 THEN not (color[v,c] and color[tp(v),c])
                     add_clause(-color[v][c], -color[tree.parent[v]][c])
 
         log_debug(f'1. Clauses: {so_far()}', symbol='STAT')
@@ -221,7 +221,7 @@ class CompleteAutomatonTask(Task):
                 for j in closed_range(1, C):
                     for u in closed_range(1, U):
                         # OR_k( transition[i,e,k,j] & first_fired[i,e,u,k] ) <=> ...
-                        # ... <=> OR_{v|active,tie[v]=e,tin[v]=u}( color[tp[v],i] & color[v,j] )
+                        # ... <=> OR_{v|active,tie(v)=e,tin(v)=u}( color[tp[v],i] & color[v,j] )
                         leftright = new_variable()
 
                         lhs = []
@@ -235,7 +235,7 @@ class CompleteAutomatonTask(Task):
                         rhs = []
                         for v in closed_range(2, V):
                             if tree.output_event[v] != 0 and tree.input_event[v] == e and tree.input_number[v] == u:
-                                # aux <-> color[parent[v],i] & color[v,j]
+                                # aux <-> color[tp(v),i] & color[v,j]
                                 aux = new_variable()
                                 p = tree.parent[v]
                                 iff_and(aux, (color[p][i], color[v][j]))
@@ -275,7 +275,7 @@ class CompleteAutomatonTask(Task):
                 rhs = []
                 for v in closed_range(2, V):
                     if tree.output_event[v] != 0:
-                        # aux <-> color[parent[v],i] & color[v,j] & output_event[j,toe[v]]
+                        # aux <-> color[tp(v),i] & color[v,j] & output_event[j,toe[v]]
                         aux = new_variable()
                         p = tree.parent[v]
                         o = tree.output_event[v]
@@ -310,21 +310,24 @@ class CompleteAutomatonTask(Task):
         log_debug(f'4. Clauses: {so_far()}', symbol='STAT')
 
         # 5. Firing constraints
-        # 5.0. ALO/AMO(first_fired)
+        # 5.0. only AMO(first_fired)
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for u in closed_range(1, U):
                     AMO(first_fired[c][e][u])
 
         # 5.1. (not_fired definition)
-        for v in closed_range(2, V):
-            if tree.output_event[v] == 0:
-                for c in closed_range(1, C):
-                    # OR_{v|passive}(color[v,c]) => not_fired[c,tie[v],tin[v],K]
-                    imply(color[v][c],  # passive: color[v] == color[parent[v]] == color[tpa[v]]
-                          not_fired[c][tree.input_event[v]][tree.input_number[v]][K])
+        for c in closed_range(1, C):
+            for e in closed_range(1, E):
+                for u in closed_range(1, U):
+                    # not_fired[c,e,u,K] <=> OR_{v|passive,tie(v)=e,tin(v)=u}(color[v,c])
+                    rhs = []
+                    for v in closed_range(2, V):
+                        if tree.output_event[v] == 0 and tree.input_event[v] == e and tree.input_number[v] == u:
+                            rhs.append(color[v][c])  # passive: color[v] == color[tp(v)] == color[tpa(v)]
+                    iff_or(not_fired[c][e][u][K], rhs)
 
-        # 5.2. not fired
+        # 5.2. not_fired extension
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for u in closed_range(1, U):
@@ -335,7 +338,16 @@ class CompleteAutomatonTask(Task):
                         # ~nf_k => ~nf_{k+1}
                         imply(-not_fired[c][e][u][k], -not_fired[c][e][u][k + 1])
 
-        # 5.3. first_fired
+                    # Trial: (AND_k(~ff_k) & ~nf_K) => ~nf_1
+                    # aux = new_variable()
+                    # rhs = []
+                    # for k in closed_range(1, K):
+                    #     rhs.append(-first_fired[c][e][u][k])
+                    # rhs.append(-not_fired[c][e][u][K])
+                    # iff_and(aux, rhs)
+                    # imply(aux, -not_fired[c][e][u][1])
+
+        # 5.3. first_fired and not_fired interaction
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for u in closed_range(1, U):

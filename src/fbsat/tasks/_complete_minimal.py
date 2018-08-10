@@ -18,7 +18,8 @@ class MinimalCompleteAutomatonTask(Task):
         self.P = P
         self.N_init = N
         self.outdir = outdir
-        self.subtask_config_minpartial = dict(use_bfs=use_bfs,
+        self.subtask_config_minpartial = dict(scenario_tree=scenario_tree,
+                                              use_bfs=use_bfs,
                                               solver_cmd=solver_cmd,
                                               is_incremental=is_incremental,
                                               outdir=outdir)
@@ -50,7 +51,7 @@ class MinimalCompleteAutomatonTask(Task):
 
         if self.C is None:
             log_debug('MinimalCompleteAutomatonTask: searching for minimal C...')
-            task = MinimalPartialAutomatonTask(self.scenario_tree, **self.subtask_config_minpartial)
+            task = MinimalPartialAutomatonTask(**self.subtask_config_minpartial)
             assignment = task.run(fast=True, only_C=True)
             C = assignment.C
             log_debug(f'MinimalCompleteAutomatonTask: found minimal C={C}')
@@ -70,7 +71,7 @@ class MinimalCompleteAutomatonTask(Task):
             for P in [1, 3, 5, 7, 9, 15]:
                 log_br()
                 log_info(f'Trying P={P}...')
-                task = CompleteAutomatonTask(self.scenario_tree, C=C, K=K, P=P, **self.subtask_config_complete)
+                task = CompleteAutomatonTask(C=C, K=K, P=P, **self.subtask_config_complete)
                 assignment = task.run(self.N_init, fast=True)
 
                 if assignment:
@@ -84,7 +85,7 @@ class MinimalCompleteAutomatonTask(Task):
             P = self.P
             log_br()
             log_info(f'MinimalCompleteAutomatonTask: pre-solving for specified P={P}...')
-            task = CompleteAutomatonTask(self.scenario_tree, C=C, K=K, P=P, **self.subtask_config_complete)
+            task = CompleteAutomatonTask(C=C, K=K, P=P, **self.subtask_config_complete)
             assignment = task.run(self.N_init, fast=True)
             if assignment:
                 log_success(f'MinimalCompleteAutomatonTask: pre-solved for P={P}')

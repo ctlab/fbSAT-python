@@ -178,7 +178,8 @@ class MinimizeAllGuardsTask:
         self.K = K
         self.T = T
         self.outdir = outdir
-        self.subtask_config = dict(C=self.C, K=self.K,
+        self.subtask_config = dict(scenario_tree=scenario_tree,
+                                   C=self.C, K=self.K,
                                    use_bfs=use_bfs,
                                    solver_cmd=solver_cmd,
                                    write_strategy=write_strategy,
@@ -197,17 +198,12 @@ class MinimizeAllGuardsTask:
         if self.basic_automaton:
             automaton = self.basic_automaton
         else:
-            log_debug('MinimizeAllGuardsTask: building basic automaton...')
+            log_debug('MinimizeAllGuardsTask: building partial automaton...')
             if self.T is not None:
-                config = dict(scenario_tree=self.scenario_tree,
-                              C=self.C, K=self.K,
-                              **self.basic_config)
-                task = PartialAutomatonTask(self.scenario_tree, **self.subtask_config_partial)
+                task = PartialAutomatonTask(**self.subtask_config)
                 automaton = task.run(self.T)
             else:
-                # if self.K is not None:
-                #     log_warn(f'Ignoring specified K={self.K}')
-                task = MinimalPartialAutomatonTask(self.scenario_tree, **self.subtask_config)
+                task = MinimalPartialAutomatonTask(**self.subtask_config)
                 automaton = task.run()
 
         if automaton:
