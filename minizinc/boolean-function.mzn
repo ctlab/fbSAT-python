@@ -49,7 +49,7 @@ constraint forall (p in 1..P) (
 );
 
 % 2.3. Terminals have value from associated input variable
-constraint forall (p in 1..P, u in 1..U, x in 1..X) (
+constraint forall (p in 1..P, x in 1..X) (
     terminal[p] = x ->
         forall (u in 1..U) (value[p, u] <-> input_values[u, x])
 );
