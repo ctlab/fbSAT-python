@@ -39,6 +39,10 @@ class FullGuard(Guard):
         return '&'.join({True: '', False: '~'}[value] + name
                         for name, value in zip(ParseTreeGuard.Node.output_variable_names,
                                                self.input_values[1:]))
+    def __str_smv__(self):
+        return ' & '.join({True: '', False: '!'}[value] + name
+                          for name, value in zip(ParseTreeGuard.Node.output_variable_names,
+                                                 self.input_values[1:]))
 
 
 class TruthTableGuard(Guard):
@@ -59,6 +63,9 @@ class TruthTableGuard(Guard):
 
     def __str_fbt__(self):
         return f'TruthTable({self.truth_table})'
+
+    def __str_smv__(self):
+        return self.__str_fbt__()
 
 
 class ParseTreeGuard(Guard):
@@ -164,6 +171,33 @@ class ParseTreeGuard(Guard):
                 return f'NOT {self.child_left.__str_fbt__()}'
             elif self.nodetype == 4:  # None
                 raise ValueError(f'why are you trying to display None-typed node?')
+        def __str_smv__(self):
+            if self.nodetype == 0:  # Terminal
+                return str(self)
+            elif self.nodetype == 1:  # AND
+                left = self.child_left.__str_smv__()
+                right = self.child_right.__str_smv__()
+                if self.child_left.nodetype == 2:  # Left child is OR
+                    left = f'({left})'
+                if self.child_right.nodetype == 2:  # Right child is OR
+                    right = f'({right})'
+                return f'{left} & {right}'
+            elif self.nodetype == 2:  # OR
+                left = self.child_left.__str_smv__()
+                right = self.child_right.__str_smv__()
+                if self.child_left.nodetype == 1:  # Left child is AND
+                    left = f'({left})'
+                if self.child_right.nodetype == 1:  # Right child is AND
+                    right = f'({right})'
+                return f'{left} | {right}'
+            elif self.nodetype == 1:  # AND
+                return f'({self.child_left.__str_smv__()} & {self.child_right.__str_smv__()})'
+            elif self.nodetype == 2:  # OR
+                return f'({self.child_left.__str_smv__()} | {self.child_right.__str_smv__()})'
+            elif self.nodetype == 3:  # NOT
+                return f'!{self.child_left.__str_smv__()}'
+            elif self.nodetype == 4:  # None
+                raise ValueError(f'why are you trying to display None-typed node?')
 
     def __init__(self, nodetype, terminal, parent, child_left, child_right):
         # Note: all arguments are 1-based
@@ -226,6 +260,9 @@ class ParseTreeGuard(Guard):
     def __str_fbt__(self):
         return self.root.__str_fbt__()
 
+    def __str_smv__(self):
+        return self.root.__str_smv__()
+
 
 class EFSM:
 
@@ -279,6 +316,10 @@ class EFSM:
         def __str__(self):
             # Example: 2/CNF(0:10101, 1:01101)
             return f'{self.id}/{self.output_event}(0:{self.algorithm_0}, 1:{self.algorithm_1})'
+
+        def __str_smv__(self):
+            # 's_{algorithm_0}_{algorithm_1}
+            return f's_{self.algorithm_0}_{self.algorithm_1}'
 
         def __repr__(self):
             return f'State(id={self.id!r}, output_event={self.output_event!r}, algorithm_0={self.algorithm_0!r}, algorithm_1={self.algorithm_1!r})'
@@ -549,6 +590,77 @@ class EFSM:
 
         return etree.tostring(FBType, encoding='UTF-8', xml_declaration=True, pretty_print=True).decode()
 
+    def get_smv_string(self):
+        from io import StringIO
+        s = StringIO()
+
+        s.write('MODULE main()\n')
+
+        state_names = ', '.join(state.__str_smv__() for state in self.states.values())
+        s.write(f'\nVAR _state : {{{state_names}}};\n')
+
+        for input_event in self.scenario_tree.input_events:
+            s.write(f'VAR {input_event} : boolean;\n')
+        for input_variable_name in self.scenario_tree.predicate_names:
+            s.write(f'VAR {input_variable_name} : boolean;\n')
+        for output_event in self.scenario_tree.output_events:
+            s.write(f'VAR {output_event} : boolean;\n')
+        for output_variable_name in self.scenario_tree.output_variable_names:
+            s.write(f'VAR {output_variable_name} : boolean;\n')
+
+        s.write('\nASSIGN\n')
+
+        s.write(f'\ninit(_state) := {self.states[self.initial_state].__str_smv__()};\n')
+        s.write('\nnext(_state) := case\n')
+        for state in self.states.values():
+            for transition in state.transitions:
+                s.write(f'    _state = {transition.source.__str_smv__()}'
+                        f' & {transition.input_event}'
+                        f' & ({transition.guard.__str_smv__()})'
+                        f' : {transition.destination.__str_smv__()};\n')
+        s.write('    TRUE: _state;\n')
+        s.write('esac;\n')
+
+        for o in closed_range(1, self.scenario_tree.O):
+            if o == self.scenario_tree.output_event[1]:
+                continue
+            output_event = self.scenario_tree.output_events[o - 1]
+            s.write(f'\ninit({output_event}) := FALSE;\n')
+            s.write(f'\nnext({output_event}) := case\n')
+            for state in self.states.values():
+                for transition in state.transitions:
+                    s.write(f'    _state = {transition.source.__str_smv__()}'
+                            # f' & {transition.input_event}'
+                            f' & next(_state) = {transition.destination.__str_smv__()}'
+                            # f' & ({transition.guard.__str_smv__()})'
+                            f' : TRUE;\n')
+            s.write('    TRUE: FALSE;\n')
+            s.write('esac;\n')
+
+        for z in closed_range(1, self.scenario_tree.Z):
+            output_variable_name = self.scenario_tree.output_variable_names[z - 1]
+            s.write(f'\ninit({output_variable_name}) := FALSE;\n')
+            s.write(f'\nnext({output_variable_name}) := case\n')
+            d = {'00': [], '01': [], '10': [], '11': []}
+            for state in self.states.values():
+                for transition in state.transitions:
+                    new0 = transition.destination.algorithm_0[z-1]
+                    new1 = transition.destination.algorithm_1[z-1]
+                    d[f'0{new0}'].append(f'next(_state) = {transition.destination.__str_smv__()}')
+                    d[f'1{new1}'].append(f'next(_state) = {transition.destination.__str_smv__()}')
+            if d['00']:
+                s.write(f'    !{output_variable_name} & (' + ' | '.join(d['00']) + ') : FALSE;\n')
+            if d['01']:
+                s.write(f'    !{output_variable_name} & (' + ' | '.join(d['01']) + ') : TRUE;\n')
+            if d['10']:
+                s.write(f'    {output_variable_name} & (' + ' | '.join(d['10']) + ') : FALSE;\n')
+            if d['11']:
+                s.write(f'    {output_variable_name} & (' + ' | '.join(d['11']) + ') : TRUE;\n')
+            s.write(f'    TRUE : {output_variable_name};\n')
+            s.write('esac;\n')
+
+        return s.getvalue()
+
     def write_gv(self, filename):
         log_debug(f'Dumping EFSM to <{filename}>...')
 
@@ -561,6 +673,12 @@ class EFSM:
         with open(filename, 'w') as f:
             f.write(self.get_fbt_string())
 
+    def write_smv(self, filename):
+        log_debug(f'Dumping EFSM to <{filename}>...')
+
+        with open(filename, 'w') as f:
+            f.write(self.get_smv_string())
+
     def dump(self, prefix):
         filename_gv = prefix + '.gv'
         self.write_gv(filename_gv)
@@ -572,6 +690,9 @@ class EFSM:
 
         filename_fbt = prefix + '.fbt'
         self.write_fbt(filename_fbt)
+
+        filename_smv = prefix + '.smv'
+        self.write_smv(filename_smv)
 
     def verify(self):
         log_info('Verifying...')
