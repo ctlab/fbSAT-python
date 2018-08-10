@@ -310,17 +310,19 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
 
     elif strategy == 'minimize':
         log_info('MinimizeAllGuards strategy')
-        if K is not None:
-            log_warn(f'Ignoring specified K={K}')
         if P is not None:
             log_warn(f'Ignoring specified P={P}')
         if N is not None:
             log_warn(f'Ignoring specified N={N}')
         config = dict(scenario_tree=scenario_tree,
-                      C=C, T=T,
+                      C=C, K=K, T=T,
                       use_bfs=use_bfs,
                       solver_cmd=sat_solver,
                       outdir=outdir)
+        if automaton:
+            with open(automaton, 'rb') as f:
+                log_debug(f'Loading pickled automaton from {automaton}...')
+                config['partial_automaton'] = pickle.load(f)
         task = MinimizeAllGuardsTask(**config)
         minimized_automaton = task.run()  # noqa
 

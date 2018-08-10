@@ -133,8 +133,8 @@ class MinimizeGuardTask:
             elif q == '1':
                 input_values.append(s2b(iv, zero_based=True))
                 root_value.append(True)
-            else:
-                log_debug(f'Don\'t care for input {iv}')
+            # else:
+            #     log_debug(f'Don\'t care for input {iv}')
         U_ = len(input_values)  # maybe lesser than real tree.U
         log_debug(f'X={X}, U={U}, U_={U_}')
         for P in closed_range(1, 7):
@@ -171,9 +171,9 @@ class MinimizeGuardTask:
 
 class MinimizeAllGuardsTask:
 
-    def __init__(self, scenario_tree, incomplete_automaton=None, C=None, K=None, T=None, *, use_bfs=True, solver_cmd=None, write_strategy=None, outdir=''):
+    def __init__(self, scenario_tree, partial_automaton=None, C=None, K=None, T=None, *, use_bfs=True, solver_cmd=None, outdir=''):
         self.scenario_tree = scenario_tree
-        self.incomplete_automaton = incomplete_automaton
+        self.partial_automaton = partial_automaton
         self.C = C
         self.K = K
         self.T = T
@@ -182,7 +182,6 @@ class MinimizeAllGuardsTask:
                                    C=self.C, K=self.K,
                                    use_bfs=use_bfs,
                                    solver_cmd=solver_cmd,
-                                   write_strategy=write_strategy,
                                    outdir=outdir)
 
     def get_stem(self, C, K, T):
@@ -195,8 +194,8 @@ class MinimizeAllGuardsTask:
         log_debug('MinimizeAllGuardsTask: running...')
         time_start_run = time.time()
 
-        if self.basic_automaton:
-            automaton = self.basic_automaton
+        if self.partial_automaton:
+            automaton = self.partial_automaton
         else:
             log_debug('MinimizeAllGuardsTask: building partial automaton...')
             if self.T is not None:
