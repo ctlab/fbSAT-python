@@ -19,10 +19,6 @@ class CompleteAutomatonTask(Task):
     Reduction = namedtuple('Reduction', VARIABLES + ' totalizer')
     Assignment = namedtuple('Assignment', VARIABLES + ' C K T P N')
 
-    # tests-1: C=6, K=3, (T=8), P=3, N=14
-    # tests-39: C=8, K=8, (T=16), P=5, N=25 (no-distinct)
-    # tests-39: C=8, K=8, (T=15), P=5, N=28 (distinct)
-
     def __init__(self, scenario_tree, *, C, K=None, P, use_bfs=True, is_distinct=False, is_forbid_or=False, solver_cmd=None, is_incremental=False, outdir=''):
         assert C is not None
         assert P is not None
@@ -72,13 +68,6 @@ class CompleteAutomatonTask(Task):
         return self.solver.number_of_clauses
 
     def run(self, N=None, *, fast=False):
-        # CompleteAutomatonTask: build complete automaton for C, K, P, (N)
-        # MinimalCompleteAutomatonTask: finds minimal C and P, minimizes over N
-
-        # find minimal C or use specified
-        # find minimal P or use specified
-        # minimize over N or use specified
-
         log_debug(f'CompleteAutomatonTask: running for N={N}...')
         time_start_run = time.time()
 
