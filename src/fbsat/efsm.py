@@ -40,6 +40,7 @@ class FullGuard(Guard):
         return '&'.join({True: '', False: '~'}[value] + name
                         for name, value in zip(ParseTreeGuard.Node.output_variable_names,
                                                self.input_values[1:]))
+
     def __str_smv__(self):
         return ' & '.join({True: '', False: '!'}[value] + name
                           for name, value in zip(ParseTreeGuard.Node.output_variable_names,
@@ -172,6 +173,7 @@ class ParseTreeGuard(Guard):
                 return f'NOT {self.child_left.__str_fbt__()}'
             elif self.nodetype == 4:  # None
                 raise ValueError(f'why are you trying to display None-typed node?')
+
         def __str_smv__(self):
             if self.nodetype == 0:  # Terminal
                 return str(self)
@@ -645,8 +647,8 @@ class EFSM:
             d = {'00': [], '01': [], '10': [], '11': []}
             for state in self.states.values():
                 for transition in state.transitions:
-                    new0 = transition.destination.algorithm_0[z-1]
-                    new1 = transition.destination.algorithm_1[z-1]
+                    new0 = transition.destination.algorithm_0[z - 1]
+                    new1 = transition.destination.algorithm_1[z - 1]
                     d[f'0{new0}'].append(f'next(_state) = {transition.destination.__str_smv__()}')
                     d[f'1{new1}'].append(f'next(_state) = {transition.destination.__str_smv__()}')
             if d['00']:
