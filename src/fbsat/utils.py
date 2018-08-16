@@ -60,7 +60,7 @@ def b2s(data, *, s_True='1', s_False='0'):
 
 def s2b(s, zero_based=False):
     '''Converts string to bool array'''
-    ans = [c != '0' for c in s]
+    ans = [{'1': True, '0': False}[c] for c in s]
     if zero_based:
         return ans
     else:
