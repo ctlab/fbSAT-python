@@ -137,7 +137,7 @@ class MinimizeGuardTask:
             #     log_debug(f'Don\'t care for input {iv}')
         U_ = len(input_values)  # maybe lesser than real tree.U
         log_debug(f'X={X}, U={U}, U_={U_}')
-        for P in closed_range(1, 7):
+        for P in closed_range(1, 9):
             log_debug(f'Trying P={P}...')
             data = dict(P=P, U=U_, X=X, input_values=input_values, root_value=root_value)
             # pymzn.dict2dzn(data, fout=f'{self.filename_prefix}_C{self.C}_T{self.T}_comb3-bf_c{c}_k{k}_P{P}.dzn')
