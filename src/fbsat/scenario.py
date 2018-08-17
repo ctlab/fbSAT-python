@@ -243,7 +243,7 @@ class ScenarioTree(treelib.Tree):
         # Fix predicate names if mismatch
         if len(predicate_names) != tree.X:
             predicate_names = [f'x{i+1}' for i in range(tree.X)]
-            log_warn('predicate_names are fixed due to mismatch: ' + '.'.join(predicate_names))
+            log_warn('predicate_names are fixed due to mismatch: ' + ','.join(predicate_names))
 
         output_variable_names = read_names(filename_output_variable_names)
         # Fix output variable names if mismatch
