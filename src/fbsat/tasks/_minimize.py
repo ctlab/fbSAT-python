@@ -4,7 +4,7 @@ from collections import namedtuple
 from functools import partial
 
 from ..efsm import ParseTreeGuard
-from ..printers import log_br, log_debug, log_error, log_info, log_success, log_warn
+from ..printers import log_br, log_debug, log_error, log_info, log_success
 from ..solver import StreamSolver
 from ..utils import closed_range, s2b, parse_raw_assignment_int, parse_raw_assignment_bool, NotBool
 
@@ -189,15 +189,10 @@ class MinimizeGuardTask:
             for x in closed_range(1, X):
                 # terminal[p,x] -> AND_u( value[p,u] <-> inputs[u,x] )
                 for u in closed_range(1, U):
-                    try:
-                        if self.inputs[u][x]:
-                            imply(terminal[p][x], value[p][u])
-                        else:
-                            imply(terminal[p][x], -value[p][u])
-                    except:
-                        log_error(f'Out of range for u={u}, x={x}')
-                        log_debug(f'inputs[u={u}] = {self.inputs[u]}')
-                        raise
+                    if self.inputs[u][x]:
+                        imply(terminal[p][x], value[p][u])
+                    else:
+                        imply(terminal[p][x], -value[p][u])
 
         log_debug(f'2. Clauses: {so_far()}', symbol='STAT')
 
