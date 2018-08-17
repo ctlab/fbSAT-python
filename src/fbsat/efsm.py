@@ -690,6 +690,9 @@ class EFSM:
     def write_smv(self, filename):
         log_debug(f'Dumping EFSM in SMV format to <{filename}>...')
 
+        with open(filename, 'w') as f:
+            f.write(self.get_smv_string())
+
     def write_pkl(self, filename):
         log_debug(f'Pickling EFSM to <{filename}>...')
 
