@@ -143,7 +143,7 @@ class Scenario:
 
         scenarios = list(map(Scenario.preprocess, scenarios_full))
 
-        log_debug(f'Done preprocessing {len(scenarios)} scenarios from {sum(map(len, scenarios_full))} down to {sum(map(len, scenarios))} elements in {time.time() - time_start_preprocessing:.2} s')
+        log_debug(f'Done preprocessing {len(scenarios)} scenarios from {sum(map(len, scenarios_full))} down to {sum(map(len, scenarios))} elements in {time.time() - time_start_preprocessing:.2f} s')
         return scenarios
 
 
