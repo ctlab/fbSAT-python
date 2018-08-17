@@ -5,6 +5,8 @@ from ._partial import PartialAutomatonTask
 from ._partial_minimal import MinimalPartialAutomatonTask
 from ._complete import CompleteAutomatonTask
 from ._complete_minimal import MinimalCompleteAutomatonTask
-from ._minimized import MinimizeAllGuardsTask
+from ._minimize import MinimizeGuardTask
+from ._minimize_all import MinimizeAllGuardsTask
 
 # Note: respect the order (Task -> Partial -> MinimalPartial -> Complete -> MinimalComplete)
+# Note: respect the order (MinimalGuard -> MinimizeAllGuards)
