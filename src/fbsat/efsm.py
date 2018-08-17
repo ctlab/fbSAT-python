@@ -19,8 +19,18 @@ class Guard(ABC):
 
 
 class FullGuard(Guard):
-    def __init__(self, input_values):
+
+    def __init__(self, input_values, *, names=None):
         self.input_values = input_values  # [1..X]:Bool
+        X = len(input_values) - 1
+        if names is not None:
+            if len(names) != len(input_values) - 1:
+                names = [f'x{x}' for x in closed_range(1, X)]
+                log_warn('names are fixed due to mismatch: ' + '.'.join(names))
+        else:
+            names = [f'x{x}' for x in closed_range(1, X)]
+            log_warn('using default names: ' + '.'.join(names))
+        self.names = names
 
     def eval(self, input_values):
         # input_values :: [1..X]:Bool
@@ -31,20 +41,17 @@ class FullGuard(Guard):
 
     def __str_gv__(self):
         # return '&'.join({True: '', False: '~'}[value] + name
-        #                 for name, value in zip(ParseTreeGuard.Node.output_variable_names,
-        #                                        self.input_values[1:]))
+        #                 for name, value in zip(self.names, self.input_values[1:]))
         return str(self)
 
     def __str_fbt__(self):
         # FIXME: maybe use 'NOT' for boolean negation?
         return '&'.join({True: '', False: '~'}[value] + name
-                        for name, value in zip(ParseTreeGuard.Node.output_variable_names,
-                                               self.input_values[1:]))
+                        for name, value in zip(self.names, self.input_values[1:]))
 
     def __str_smv__(self):
         return ' & '.join({True: '', False: '!'}[value] + name
-                          for name, value in zip(ParseTreeGuard.Node.output_variable_names,
-                                                 self.input_values[1:]))
+                          for name, value in zip(self.names, self.input_values[1:]))
 
 
 class TruthTableGuard(Guard):
@@ -74,8 +81,7 @@ class ParseTreeGuard(Guard):
 
     class Node:
 
-        predicate_names = None
-        output_variable_names = None
+        names = None
 
         def __init__(self, nodetype, terminal):
             assert 0 <= nodetype <= 4
@@ -120,7 +126,10 @@ class ParseTreeGuard(Guard):
 
         def __str__(self):
             if self.nodetype == 0:  # Terminal
-                return self.predicate_names[self.terminal - 1]
+                if self.names is not None:
+                    return self.names[self.terminal - 1]
+                else:
+                    return f'x{self.terminal}'
             elif self.nodetype == 1:  # AND
                 left = str(self.child_left)
                 right = str(self.child_right)
@@ -202,10 +211,11 @@ class ParseTreeGuard(Guard):
             elif self.nodetype == 4:  # None
                 raise ValueError(f'why are you trying to display None-typed node?')
 
-    def __init__(self, nodetype, terminal, parent, child_left, child_right):
+    def __init__(self, nodetype, terminal, parent, child_left, child_right, *, names=None):
         # Note: all arguments are 1-based
         assert len(nodetype) == len(terminal) == len(parent) == len(child_left) == len(child_right)
         P = len(nodetype) - 1
+        self.Node.names = names
 
         nodes = [None] + [self.Node(nt, tn) for nt, tn in zip(nodetype[1:], terminal[1:])]  # 1-based
 
@@ -217,11 +227,11 @@ class ParseTreeGuard(Guard):
         self.root = nodes[1]
 
     @classmethod
-    def from_input(cls, input_values):
+    def from_input(cls, input_values, *, names=None):
         # input_values :: [1..X]:Bool
         self = cls.__new__(cls)
+        self.Node.names = names
         X = len(input_values) - 1
-        # assert X == 10
 
         left = self.Node(0, 1)
         if not input_values[1]:
@@ -357,8 +367,8 @@ class EFSM:
                 for u in closed_range(1, U):
                     dest = assignment.transition[c][e][u]
                     if dest != c:
-                        guard = FullGuard(unique_input[u])
-                        # guard = ParseTreeGuard.from_input(unique_input[u])
+                        guard = FullGuard(unique_input[u], names=tree.predicate_names)
+                        # guard = ParseTreeGuard.from_input(unique_input[u], names=tree.predicate_names)
                         efsm.add_transition(c, dest, input_events[e - 1], guard)
 
         if efsm.number_of_states != assignment.C:
@@ -446,7 +456,8 @@ class EFSM:
                                                assignment.terminal[c][e][k],
                                                assignment.parent[c][e][k],
                                                assignment.child_left[c][e][k],
-                                               assignment.child_right[c][e][k])
+                                               assignment.child_right[c][e][k],
+                                               names=tree.predicate_names)
                         efsm.add_transition(c, dest, input_event, guard)
 
         if efsm.number_of_states != assignment.C:

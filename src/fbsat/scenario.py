@@ -6,7 +6,6 @@ import regex
 import click
 import treelib
 
-from .efsm import ParseTreeGuard
 from .utils import *
 from .printers import *
 
@@ -239,22 +238,23 @@ class ScenarioTree(treelib.Tree):
         if preprocess:
             scenarios = Scenario.preprocess_scenarios(scenarios)
         tree = ScenarioTree(scenarios)
-        tree.predicate_names = read_names(filename_predicate_names)
+
+        predicate_names = read_names(filename_predicate_names)
         # Fix predicate names if mismatch
-        if len(tree.predicate_names) != tree.X:
-            tree.predicate_names = [f'x{i+1}' for i in range(tree.X)]
-            log_warn(f'tree.predicate_names are fixed due to mismatch: {",".join(tree.predicate_names)}')
-        tree.output_variable_names = read_names(filename_output_variable_names)
+        if len(predicate_names) != tree.X:
+            predicate_names = [f'x{i+1}' for i in range(tree.X)]
+            log_warn('predicate_names are fixed due to mismatch: ' + '.'.join(predicate_names))
+
+        output_variable_names = read_names(filename_output_variable_names)
         # Fix output variable names if mismatch
-        if len(tree.output_variable_names) != tree.Z:
-            tree.output_variable_names = [f'z{i+1}' for i in range(tree.Z)]
-            log_warn(f'tree.output_variable_names are fixed due to mismatch: {",".join(tree.output_variable_names)}')
+        if len(output_variable_names) != tree.Z:
+            output_variable_names = [f'z{i+1}' for i in range(tree.Z)]
+            log_warn('output_variable_names are fixed due to mismatch: ' + ','.join(output_variable_names))
+
         tree.scenarios_filename = filename_scenarios
-        # ===========
-        # FIXME: dirty
-        ParseTreeGuard.Node.predicate_names = tree.predicate_names
-        ParseTreeGuard.Node.output_variable_names = tree.output_variable_names
-        # ===========
+        tree.predicate_names = predicate_names
+        tree.output_variable_names = output_variable_names
+
         return tree
 
     @property
