@@ -6,8 +6,9 @@ from functools import partial
 from . import Task
 from ..efsm import EFSM
 from ..printers import log_br, log_debug, log_error, log_info, log_success
-from ..solver import IncrementalSolver, StreamSolver
-from ..utils import closed_range, parse_raw_assignment_algo, parse_raw_assignment_bool, parse_raw_assignment_int
+from ..solver import FileSolver, IncrementalSolver, StreamSolver
+from ..utils import (auto_finalize, closed_range, parse_raw_assignment_algo,
+                     parse_raw_assignment_bool, parse_raw_assignment_int)
 
 __all__ = ['FullAutomatonTask']
 
@@ -19,16 +20,14 @@ class FullAutomatonTask(Task):
     Reduction = namedtuple('Reduction', VARIABLES + ' totalizer')
     Assignment = namedtuple('Assignment', VARIABLES + ' C T')
 
-    def __init__(self, scenario_tree, *, C, use_bfs=True, solver_cmd=None, is_incremental=False, outdir=''):
+    def __init__(self, scenario_tree, *, C, use_bfs=True, solver_cmd=None, is_incremental=False, is_filesolver=False, outdir=''):
         assert C is not None
-
-        if is_incremental:
-            raise NotImplementedError('Wait, incremental solving is not supported just yet!')
 
         self.scenario_tree = scenario_tree
         self.C = C
         self.use_bfs = use_bfs
         self.is_incremental = is_incremental
+        self.is_filesolver = is_filesolver
         self.outdir = outdir
         self.solver_config = dict(cmd=solver_cmd)
         self._new_solver()
@@ -39,6 +38,8 @@ class FullAutomatonTask(Task):
         self._T_defined = None
         if self.is_incremental:
             self.solver = IncrementalSolver(**self.solver_config)
+        elif self.is_filesolver:
+            self.solver = FileSolver(**self.solver_config, filename_prefix=self.get_filename_prefix())
         else:
             self.solver = StreamSolver(**self.solver_config)
 
@@ -60,6 +61,7 @@ class FullAutomatonTask(Task):
     def number_of_clauses(self):
         return self.solver.number_of_clauses
 
+    @auto_finalize
     def run(self, T=None, *, fast=False):
         log_debug(f'FullAutomatonTask: running for T={T}...')
         time_start_run = time.time()
@@ -87,6 +89,7 @@ class FullAutomatonTask(Task):
             return automaton
 
     def finalize(self):
+        log_debug('FullAutomatonTask: finalizing...')
         if self.is_incremental:
             self.solver.process.kill()
 
@@ -99,7 +102,7 @@ class FullAutomatonTask(Task):
         assert self.number_of_variables == 0
         assert self.number_of_clauses == 0
 
-        log_debug(f'Declaring base reduction for C = {C}...')
+        log_debug(f'Declaring base reduction for C={C}...')
         time_start_base = time.time()
 
         # =-=-=-=-=-=

@@ -64,11 +64,11 @@ CONTEXT_SETTINGS = dict(
 @click.option('-Cmax', 'Cmax', type=int, metavar='<int>',
               help='[old-basic] C_max')
 @click.option('--min', 'is_minimize', is_flag=True,
-              help='Do minimize')
+              help='[old] Do minimize')
 @click.option('--incremental', 'is_incremental', is_flag=True,
-              help='Use incremental solver')
+              help='Use IncrementalSolver backend')
 @click.option('--filesolver', 'is_filesolver', is_flag=True,
-              help='Use file solver')
+              help='Use FileSolver backend')
 @click.option('--reuse', 'is_reuse', is_flag=True,
               help='Reuse generated base reduction and objective function')
 @click.option('--bfs/--no-bfs', 'use_bfs', is_flag=True,
@@ -87,14 +87,14 @@ CONTEXT_SETTINGS = dict(
               help='SAT solver')
 @click.option('--sat-isolver', metavar='<cmd>',
               default='incremental-lingeling', show_default=True,
-              help='Incremental SAT solver')
+              help='[old] Incremental SAT solver')
 @click.option('--mzn-solver', metavar='<cmd>',
               default='minizinc --fzn-cmd fzn-gecode', show_default=True,
               # default='mzn-fzn --solver fz', show_default=True,
-              help='Minizinc solver')
+              help='[old] Minizinc solver')
 @click.option('--write-strategy', type=click.Choice(['direct', 'tempfile', 'StringIO', 'pysat']),
               default='StringIO', show_default=True,
-              help='Which file-write strategy to use')
+              help='[old] Which file-write strategy to use')
 @click.option('--automaton', help='File with pickled automaton')
 @click.version_option(__version__)
 def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_variable_names,
@@ -225,6 +225,8 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
                       C=C,
                       use_bfs=use_bfs,
                       solver_cmd=sat_solver,
+                      is_incremental=is_incremental,
+                      is_filesolver=is_filesolver,
                       outdir=outdir)
         task = FullAutomatonTask(**config)
         full_automaton = task.run(T)  # noqa
@@ -242,6 +244,8 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
                       C=C, T=T,
                       use_bfs=use_bfs,
                       solver_cmd=sat_solver,
+                      is_incremental=is_incremental,
+                      is_filesolver=is_filesolver,
                       outdir=outdir)
         task = MinimalFullAutomatonTask(**config)
         minimal_full_automaton = task.run()  # noqa
@@ -273,6 +277,8 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
                       C=C, K=K, T=T,
                       use_bfs=use_bfs,
                       solver_cmd=sat_solver,
+                      is_incremental=is_incremental,
+                      is_filesolver=is_filesolver,
                       outdir=outdir)
         task = MinimalPartialAutomatonTask(**config)
         minimal_partial_automaton = task.run()  # noqa
@@ -288,6 +294,7 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
                       is_forbid_or=is_forbid_or,
                       solver_cmd=sat_solver,
                       is_incremental=is_incremental,
+                      is_filesolver=is_filesolver,
                       outdir=outdir)
         task = CompleteAutomatonTask(**config)
         complete_automaton = task.run(N)  # noqa
@@ -304,6 +311,7 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
                       is_forbid_or=is_forbid_or,
                       solver_cmd=sat_solver,
                       is_incremental=is_incremental,
+                      is_filesolver=is_filesolver,
                       outdir=outdir)
         task = MinimalCompleteAutomatonTask(**config)
         minimal_complete_automaton = task.run()  # noqa
@@ -318,6 +326,8 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
                       C=C, K=K, T=T,
                       use_bfs=use_bfs,
                       solver_cmd=sat_solver,
+                      is_incremental=is_incremental,
+                      is_filesolver=is_filesolver,
                       outdir=outdir)
         if automaton:
             with open(automaton, 'rb') as f:

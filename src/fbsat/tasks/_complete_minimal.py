@@ -11,7 +11,7 @@ __all__ = ['MinimalCompleteAutomatonTask']
 
 class MinimalCompleteAutomatonTask(Task):
 
-    def __init__(self, scenario_tree, *, C=None, K=None, P=None, N=None, use_bfs=True, is_distinct=False, is_forbid_or=False, solver_cmd=None, is_incremental=False, outdir=''):
+    def __init__(self, scenario_tree, *, C=None, K=None, P=None, N=None, use_bfs=True, is_distinct=False, is_forbid_or=False, solver_cmd=None, is_incremental=False, is_filesolver=False, outdir=''):
         self.scenario_tree = scenario_tree
         self.C = C
         self.K = K
@@ -22,6 +22,7 @@ class MinimalCompleteAutomatonTask(Task):
                                               use_bfs=use_bfs,
                                               solver_cmd=solver_cmd,
                                               is_incremental=is_incremental,
+                                              is_filesolver=is_filesolver,
                                               outdir=outdir)
         self.subtask_config_complete = dict(**self.subtask_config_minpartial,
                                             is_distinct=is_distinct,
@@ -72,7 +73,7 @@ class MinimalCompleteAutomatonTask(Task):
                 log_br()
                 log_info(f'Trying P={P}...')
                 task = CompleteAutomatonTask(C=C, K=K, P=P, **self.subtask_config_complete)
-                assignment = task.run(self.N_init, fast=True)
+                assignment = task.run(self.N_init, fast=True, finalize=False)
 
                 if assignment:
                     log_success(f'MinimalCompleteAutomatonTask: found P={P}')
@@ -86,7 +87,7 @@ class MinimalCompleteAutomatonTask(Task):
             log_br()
             log_info(f'MinimalCompleteAutomatonTask: pre-solving for specified P={P}...')
             task = CompleteAutomatonTask(C=C, K=K, P=P, **self.subtask_config_complete)
-            assignment = task.run(self.N_init, fast=True)
+            assignment = task.run(self.N_init, fast=True, finalize=False)
             if assignment:
                 log_success(f'MinimalCompleteAutomatonTask: pre-solved for P={P}')
                 # TODO: show presolved semi-minimal automaton
@@ -98,7 +99,7 @@ class MinimalCompleteAutomatonTask(Task):
             N = best.N - 1
             log_br()
             log_info(f'Trying N = {N}...')
-            assignment = task.run(N, fast=True)
+            assignment = task.run(N, fast=True, finalize=False)
 
         task.finalize()
 

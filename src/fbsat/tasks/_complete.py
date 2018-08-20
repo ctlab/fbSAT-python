@@ -6,8 +6,9 @@ from functools import partial
 from . import Task
 from ..efsm import EFSM
 from ..printers import log_br, log_debug, log_error, log_info, log_success
-from ..solver import IncrementalSolver, StreamSolver
-from ..utils import closed_range, parse_raw_assignment_algo, parse_raw_assignment_bool, parse_raw_assignment_int
+from ..solver import FileSolver, IncrementalSolver, StreamSolver
+from ..utils import (auto_finalize, closed_range, parse_raw_assignment_algo,
+                     parse_raw_assignment_bool, parse_raw_assignment_int)
 
 __all__ = ['CompleteAutomatonTask']
 
@@ -19,7 +20,7 @@ class CompleteAutomatonTask(Task):
     Reduction = namedtuple('Reduction', VARIABLES + ' totalizer')
     Assignment = namedtuple('Assignment', VARIABLES + ' C K T P N')
 
-    def __init__(self, scenario_tree, *, C, K=None, P, use_bfs=True, is_distinct=False, is_forbid_or=False, solver_cmd=None, is_incremental=False, outdir=''):
+    def __init__(self, scenario_tree, *, C, K=None, P, use_bfs=True, is_distinct=False, is_forbid_or=False, solver_cmd=None, is_incremental=False, is_filesolver=False, outdir=''):
         assert C is not None
         assert P is not None
 
@@ -35,6 +36,7 @@ class CompleteAutomatonTask(Task):
         self.is_forbid_or = is_forbid_or
         self.outdir = outdir
         self.is_incremental = is_incremental
+        self.is_filesolver = is_filesolver
         self.solver_config = dict(cmd=solver_cmd)
         self._new_solver()
 
@@ -44,6 +46,8 @@ class CompleteAutomatonTask(Task):
         self._N_defined = None
         if self.is_incremental:
             self.solver = IncrementalSolver(**self.solver_config)
+        elif self.is_filesolver:
+            self.solver = FileSolver(**self.solver_config, filename_prefix=self.get_filename_prefix())
         else:
             self.solver = StreamSolver(**self.solver_config)
 
@@ -67,7 +71,9 @@ class CompleteAutomatonTask(Task):
     def number_of_clauses(self):
         return self.solver.number_of_clauses
 
+    @auto_finalize
     def run(self, N=None, *, fast=False):
+        # TODO: rename 'fast' to 'only_assignment'
         log_debug(f'CompleteAutomatonTask: running for N={N}...')
         time_start_run = time.time()
 
@@ -94,6 +100,7 @@ class CompleteAutomatonTask(Task):
             return automaton
 
     def finalize(self):
+        log_debug('CompleteAutomatonTask: finalizing...')
         if self.is_incremental:
             self.solver.process.kill()
 

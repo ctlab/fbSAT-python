@@ -11,7 +11,7 @@ __all__ = ['MinimalPartialAutomatonTask']
 
 class MinimalPartialAutomatonTask(Task):
 
-    def __init__(self, scenario_tree, *, C=None, K=None, T=None, use_bfs=True, solver_cmd=None, is_incremental=False, outdir=''):
+    def __init__(self, scenario_tree, *, C=None, K=None, T=None, use_bfs=True, solver_cmd=None, is_incremental=False, is_filesolver=False, outdir=''):
         self.scenario_tree = scenario_tree
         self.C = C
         self.K = K
@@ -21,6 +21,7 @@ class MinimalPartialAutomatonTask(Task):
                                    use_bfs=use_bfs,
                                    solver_cmd=solver_cmd,
                                    is_incremental=is_incremental,
+                                   is_filesolver=is_filesolver,
                                    outdir=outdir)
 
     def get_stem(self, C, K, T):
@@ -40,7 +41,7 @@ class MinimalPartialAutomatonTask(Task):
                 log_br()
                 log_info(f'Trying C = {C}...')
                 task = PartialAutomatonTask(C=C, K=self.K, **self.subtask_config)
-                assignment = task.run(self.T_init, fast=True)
+                assignment = task.run(self.T_init, fast=True, finalize=False)
                 if assignment:
                     best = assignment
                     log_debug(f'MinimalPartialAutomatonTask: found minimal C={C}')
@@ -52,7 +53,7 @@ class MinimalPartialAutomatonTask(Task):
         else:
             log_debug(f'MinimalPartialAutomatonTask: using specified C={self.C}')
             task = PartialAutomatonTask(C=self.C, K=self.K, **self.subtask_config)
-            best = task.run(self.T_init, fast=True)
+            best = task.run(self.T_init, fast=True, finalize=False)
 
         if not only_C and best:
             log_debug('MinimalPartialAutomatonTask: searching for minimal T...')
@@ -62,7 +63,7 @@ class MinimalPartialAutomatonTask(Task):
                 T = best.T - 1
                 log_br()
                 log_info(f'Trying T={T}...')
-                assignment = task.run(T, fast=True)
+                assignment = task.run(T, fast=True, finalize=False)
                 if assignment is None:
                     log_debug(f'MinimalPartialAutomatonTask: found minimal T={best.T}')
                     break

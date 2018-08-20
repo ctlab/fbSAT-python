@@ -1,11 +1,13 @@
 import os
+from functools import wraps
 
 import click
 
 from .printers import log_debug, log_warn
 
 __all__ = ['NotBool', 'closed_range', 'open_maybe_gzip', 'read_names', 'algorithm2st', 'b2s', 's2b',
-           'parse_raw_assignment_algo', 'parse_raw_assignment_bool', 'parse_raw_assignment_int']
+           'parse_raw_assignment_algo', 'parse_raw_assignment_bool', 'parse_raw_assignment_int',
+           'auto_finalize']
 
 
 class NotBoolType:
@@ -90,3 +92,13 @@ def parse_raw_assignment_bool(raw_assignment, data):
 def parse_raw_assignment_algo(raw_assignment, data):
     return [None] + [b2s(raw_assignment[item] > 0 for item in subdata[1:])
                      for subdata in data[1:]]
+
+
+def auto_finalize(func):
+    @wraps(func)
+    def wrapped(self, *args, finalize=True, **kwargs):
+        result = func(self, *args, **kwargs)
+        if finalize:
+            self.finalize()
+        return result
+    return wrapped

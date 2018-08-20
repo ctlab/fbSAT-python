@@ -6,8 +6,9 @@ from functools import partial
 from . import Task
 from ..efsm import EFSM
 from ..printers import log_br, log_debug, log_error, log_info, log_success
-from ..solver import IncrementalSolver, StreamSolver, FileSolver
-from ..utils import closed_range, parse_raw_assignment_algo, parse_raw_assignment_bool, parse_raw_assignment_int
+from ..solver import FileSolver, IncrementalSolver, StreamSolver
+from ..utils import (auto_finalize, closed_range, parse_raw_assignment_algo,
+                     parse_raw_assignment_bool, parse_raw_assignment_int)
 
 __all__ = ['PartialAutomatonTask']
 
@@ -39,7 +40,6 @@ class PartialAutomatonTask(Task):
         self._is_base_declared = False
         self._is_totalizer_declared = False
         self._T_defined = None
-        # TODO: pass some filename_prefix to solver
         if self.is_incremental:
             self.solver = IncrementalSolver(**self.solver_config)
         elif self.is_filesolver:
@@ -66,6 +66,7 @@ class PartialAutomatonTask(Task):
     def number_of_clauses(self):
         return self.solver.number_of_clauses
 
+    @auto_finalize
     def run(self, T=None, *, fast=False):
         log_debug(f'PartialAutomatonTask: running for T={T}...')
         time_start_run = time.time()
@@ -93,6 +94,7 @@ class PartialAutomatonTask(Task):
             return automaton
 
     def finalize(self):
+        log_debug('PartialAutomatonTask: finalizing...')
         if self.is_incremental:
             self.solver.process.kill()
 

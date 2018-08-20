@@ -3,31 +3,39 @@ import time
 from collections import namedtuple
 from functools import partial
 
+from . import Task
 from ..efsm import ParseTreeGuard
 from ..printers import log_br, log_debug, log_error, log_info, log_success
-from ..solver import StreamSolver
-from ..utils import closed_range, s2b, parse_raw_assignment_int, parse_raw_assignment_bool, NotBool
+from ..solver import FileSolver, IncrementalSolver, StreamSolver
+from ..utils import NotBool, closed_range, parse_raw_assignment_bool, parse_raw_assignment_int, s2b
 
 __all__ = ['MinimizeGuardTask']
 
 VARIABLES = 'nodetype terminal child_left child_right parent value child_value_left child_value_right'
 
 
-class MinimizeGuardTask:
+class MinimizeGuardTask(Task):
 
     Reduction = namedtuple('Reduction', VARIABLES)
     Assignment = namedtuple('Assignment', VARIABLES + ' P')
 
-    def __init__(self, scenario_tree, *, guard, solver_cmd=None, outdir=''):
+    def __init__(self, scenario_tree, *, guard, solver_cmd=None, is_incremental=False, is_filesolver=False, outdir=''):
         self.scenario_tree = scenario_tree
         self.guard = guard
 
         self.outdir = outdir
+        self.is_incremental = is_incremental
+        self.is_filesolver = is_filesolver
         self.solver_config = dict(cmd=solver_cmd)
 
     def _new_solver(self):
         self._is_reduction_declared = False
-        self.solver = StreamSolver(**self.solver_config)
+        if self.is_incremental:
+            self.solver = IncrementalSolver(**self.solver_config)
+        elif self.is_filesolver:
+            self.solver = FileSolver(**self.solver_config, filename_prefix=self.get_filename_prefix())
+        else:
+            self.solver = StreamSolver(**self.solver_config)
 
     def get_stem(self):
         return f'minimize_{self.scenario_tree.scenarios_stem}_P{self.P}'
@@ -68,7 +76,7 @@ class MinimizeGuardTask:
                 roots.append(True)
             # else:
             #     log_debug(f'Don\'t care for input {iv}')
-        U_ = len(inputs)  # maybe less than the real tree.U
+        U_ = len(inputs)  # may be less than the real tree.U
         log_debug(f'X={X}, U={U}, U_={U_}')
 
         self.inputs = inputs
@@ -82,6 +90,7 @@ class MinimizeGuardTask:
             self._declare_reduction()
 
             raw_assignment = self.solver.solve()
+            self.finalize()
             assignment = self.parse_raw_assignment(raw_assignment)
             minimized_guard = self.build_guard(assignment)
 
@@ -93,6 +102,11 @@ class MinimizeGuardTask:
 
         log_debug(f'MinimizeGuardTask: done in {time.time() - time_start_run:.2f} s')
         return minimized_guard
+
+    def finalize(self):
+        log_debug('MinimizeGuardTask: finalizing...')
+        if self.is_incremental:
+            self.solver.process.kill()
 
     def _declare_reduction(self):
         if self._is_reduction_declared:

@@ -1,16 +1,16 @@
 import os
 import time
 
-from . import PartialAutomatonTask, MinimalPartialAutomatonTask, MinimizeGuardTask
+from . import MinimalPartialAutomatonTask, MinimizeGuardTask, PartialAutomatonTask, Task
 from ..printers import log_br, log_debug, log_error, log_info, log_success, log_warn
-from ..utils import closed_range, s2b
+from ..utils import closed_range
 
 __all__ = ['MinimizeAllGuardsTask']
 
 
-class MinimizeAllGuardsTask:
+class MinimizeAllGuardsTask(Task):
 
-    def __init__(self, scenario_tree, *, partial_automaton=None, C=None, K=None, T=None, use_bfs=True, solver_cmd=None, outdir=''):
+    def __init__(self, scenario_tree, *, partial_automaton=None, C=None, K=None, T=None, use_bfs=True, solver_cmd=None, is_incremental=False, is_filesolver=False, outdir=''):
         self.scenario_tree = scenario_tree
         self.partial_automaton = partial_automaton
         self.C = C
@@ -19,6 +19,8 @@ class MinimizeAllGuardsTask:
         self.outdir = outdir
         self.subtask_config_guard = dict(scenario_tree=scenario_tree,
                                          solver_cmd=solver_cmd,
+                                         is_incremental=is_incremental,
+                                         is_filesolver=is_filesolver,
                                          outdir=outdir)
         self.subtask_config_automaton = dict(**self.subtask_config_guard,
                                              C=self.C, K=self.K,
