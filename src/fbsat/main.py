@@ -116,22 +116,17 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
     # scenario_tree.pprint(n=30)
     log_success(f'Successfully built scenario tree of size {scenario_tree.size()} in {time.time() - time_start_tree:.2f} s')
 
-    if not os.path.exists(os.path.dirname(filename_prefix)):
+    if strategy.startswith('old') and not os.path.exists(os.path.dirname(filename_prefix)):
         log_br()
         log_warn('Ensuring folder for CNFs exists')
         os.makedirs(os.path.dirname(filename_prefix), exist_ok=True)
 
-    if not os.path.exists(outdir):
+    if not strategy.startswith('old') and not os.path.exists(outdir):
         log_br()
         log_warn('Ensuring output directory exists')
         os.makedirs(outdir, exist_ok=True)
 
     filename_prefix += '_' + os.path.splitext(os.path.basename(filename_scenarios))[0]
-
-    # =================
-    with open(f'{filename_prefix}_scenario_tree', 'wb') as f:
-        pickle.dump(scenario_tree, f, pickle.HIGHEST_PROTOCOL)
-    # =================
 
     log_br()
     if strategy == 'old-basic':
