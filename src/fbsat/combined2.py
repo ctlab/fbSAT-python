@@ -1,16 +1,17 @@
 import os
-import time
-import regex
-import shutil
 import pickle
-import tempfile
+import shutil
 import subprocess
-from io import StringIO
+import tempfile
+import time
 from collections import deque, namedtuple
+from io import StringIO
+
+import regex
 
 from .efsm import *
-from .utils import *
 from .printers import *
+from .utils import *
 
 __all__ = ['Instance']
 

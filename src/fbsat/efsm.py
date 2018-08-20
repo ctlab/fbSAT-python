@@ -1,12 +1,12 @@
 import os
-import time
 import pickle
+import random
+import time
 from abc import ABC, abstractmethod
 from collections import OrderedDict
-import random
 
-from .utils import *
 from .printers import *
+from .utils import *
 
 __all__ = ['FullGuard', 'ParseTreeGuard', 'TruthTableGuard', 'EFSM']
 

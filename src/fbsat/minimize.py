@@ -1,12 +1,12 @@
-import os
-import time
-import pickle
 import itertools
+import os
+import pickle
 import subprocess
+import time
 
 from .efsm import *
-from .utils import *
 from .printers import *
+from .utils import *
 
 __all__ = ['Instance']
 

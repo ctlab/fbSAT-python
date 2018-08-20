@@ -1,21 +1,21 @@
 import os
-import time
 import pickle
+import time
 
 import click
 
 from .basic import Instance as InstanceBasic
 from .basic2 import Instance as InstanceBasic2
-from .minimize import Instance as InstanceMinimize
 from .combined import Instance as InstanceCombined
 from .combined2 import Instance as InstanceCombined2
 from .combined3 import Instance as InstanceCombined3
-from .scenario import *
 from .efsm import *
-from .utils import *
+from .minimize import Instance as InstanceMinimize
 from .printers import *
+from .scenario import *
 from .solver import *
 from .tasks import *
+from .utils import *
 from .version import version as __version__
 
 CONTEXT_SETTINGS = dict(

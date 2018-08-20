@@ -1,13 +1,13 @@
+import itertools
 import os
 import time
-import itertools
 
-import regex
 import click
+import regex
 import treelib
 
-from .utils import *
 from .printers import *
+from .utils import *
 
 __all__ = ['ScenarioTree']
 
