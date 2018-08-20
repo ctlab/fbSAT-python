@@ -54,6 +54,7 @@ class MinimizeAllGuardsTask:
             else:
                 K = self.K
             T = automaton.number_of_transitions
+            is_all_minimized = True
 
             for c in closed_range(1, C):
                 state = automaton.states[c]
@@ -63,11 +64,27 @@ class MinimizeAllGuardsTask:
                     task = MinimizeGuardTask(**self.subtask_config_guard, guard=transition.guard)
                     minimized_guard = task.run()
                     if minimized_guard:
-                        log_debug(f'MinimizeAllGuardsTask: guard on transition k={k} from {transition.source.id} to {transition.destination.id} was minimized to {minimized_guard}')
+                        # log_debug(f'MinimizeAllGuardsTask: guard on transition k={k} from {transition.source.id} to {transition.destination.id} was minimized to {minimized_guard}')
                         transition.guard = minimized_guard
                     else:
-                        log_debug(f'MinimizeAllGuardsTask: guard on transition k={k} from {transition.source.id} to {transition.destination.id} was not minimized')
+                        # log_debug(f'MinimizeAllGuardsTask: guard on transition k={k} from {transition.source.id} to {transition.destination.id} was not minimized')
+                        is_all_minimized = False
 
+            log_br()
+            if is_all_minimized:
+                total_size = sum(transition.guard.size()
+                                 for state in automaton.states.values()
+                                 for transition in state.transitions)
+                log_success(f'All guard are minimized. Total size: {total_size}')
+            else:
+                from ..efsm import ParseTreeGuard, TruthTableGuard
+                total_size = sum(transition.guard.size() if isinstance(transition.guard, ParseTreeGuard) else 0
+                                 for state in automaton.states.values()
+                                 for transition in state.transitions)
+                tts = sum(isinstance(transition.guard, TruthTableGuard)
+                          for state in automaton.states.values()
+                          for transition in state.transitions)
+                log_warn(f'Not all guards are minimized. Total size: {total_size}. Truth tables: {tts}')
             automaton.dump(self.get_filename_prefix(C, K, T))
 
             log_success('Automaton with minimized guards:')
