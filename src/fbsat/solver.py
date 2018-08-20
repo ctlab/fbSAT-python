@@ -217,12 +217,9 @@ class FileSolver(StreamSolver):
 
 class IncrementalSolver(Solver):
 
-    def __init__(self, cmd, filename_prefix=''):
-        # self.cmd = cmd
-        # self.filename_prefix = filename_prefix
+    def __init__(self, cmd):
         self.process = subprocess.Popen(cmd, shell=True, universal_newlines=True,
                                         stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-        # self.stream = StringIO()
         self.number_of_variables = 0
         self.number_of_clauses = 0
 
@@ -235,7 +232,7 @@ class IncrementalSolver(Solver):
         self.process.stdin.write(' '.join(map(str, vs)) + ' 0\n')
 
     def solve(self):
-        log_debug(f'Solving with "{self.process.args}"...')
+        log_debug(f'Solving incrementally with "{self.process.args}"...')
         time_start_solve = time.time()
         p = self.process
         p.stdin.write('solve 0\n')  # TODO: pass timeout?
