@@ -8,5 +8,6 @@ from ._complete_minimal import MinimalCompleteAutomatonTask
 from ._minimize import MinimizeGuardTask
 from ._minimize_all import MinimizeAllGuardsTask
 
+# Note: respect the order (Task -> FullAutomaton -> MinimalFullAutomaton)
 # Note: respect the order (Task -> Partial -> MinimalPartial -> Complete -> MinimalComplete)
-# Note: respect the order (MinimalGuard -> MinimizeAllGuards)
+# Note: respect the order (Task -> MinimalGuard -> MinimizeAllGuards)
