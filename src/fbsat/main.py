@@ -109,12 +109,25 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
     # log_debug(zlib.decompress(base64.b64decode(b'eNqVUUEOwCAIu/MKnrvjSMaWLOFzvmRqFgcKixoOWlppFTCvdG5O8eWCIRunubUHajIfiXdV0uOdo3k+3xZpQgEvebbseS4yWXilgpOKR35YGbHRuMEp4MfDSmc5Eyn1z4jXo6A+mX9x0fphn1Zf0/YPKdybbQ==')).decode(), symbol=None)
     # =====================
 
-    log_br()
-    log_info('Building scenario tree...')
     time_start_tree = time.time()
-    scenario_tree = ScenarioTree.from_files(filename_scenarios, filename_predicate_names, filename_output_variable_names)
-    # scenario_tree.pprint(n=30)
-    log_success(f'Successfully built scenario tree of size {scenario_tree.size()} in {time.time() - time_start_tree:.2f} s')
+    filename_scenarios_pkl = filename_scenarios + '.pkl'
+    log_br()
+    if os.path.exists(filename_scenarios_pkl):
+        log_info(f'Unpickling scenario tree from <{filename_scenarios_pkl}>...')
+        with open(filename_scenarios_pkl, 'rb') as f:
+            scenario_tree = pickle.load(f)
+        log_debug('Predicate names: ' + ', '.join(scenario_tree.predicate_names))
+        log_debug('Output variables names: ' + ', '.join(scenario_tree.output_variable_names))
+        # scenario_tree.pprint(n=30)
+        log_success(f'Successfully unpickled scenario tree of size {scenario_tree.size()} in {time.time() - time_start_tree:.2f} s')
+    else:
+        log_info('Building scenario tree...')
+        scenario_tree = ScenarioTree.from_files(filename_scenarios, filename_predicate_names, filename_output_variable_names)
+        # scenario_tree.pprint(n=30)
+        log_debug(f'Pickling scenarios tree to <{filename_scenarios_pkl}>...')
+        with open(filename_scenarios_pkl, 'wb') as f:
+            pickle.dump(scenario_tree, f)
+        log_success(f'Successfully built scenario tree of size {scenario_tree.size()} in {time.time() - time_start_tree:.2f} s')
 
     if strategy.startswith('old') and not os.path.exists(os.path.dirname(filename_prefix)):
         log_br()
