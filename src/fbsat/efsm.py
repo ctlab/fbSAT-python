@@ -297,6 +297,22 @@ class EFSM:
                 # Example: 2->3 on REQ if (x1 & x2)
                 return f'{self.source.id} to {self.destination.id} on {self.input_event} if {self.guard}'
 
+            def __str_fbt__(self):
+                return f'{self.input_event}&{self.guard.__str_fbt__()}'
+
+            def __str_smv_destination__(self):
+                return(f'_state={self.source.__str_smv__()}'
+                       f' & {self.input_event}'
+                       f' & ({self.guard.__str_smv__()})'
+                       f' : {self.destination.__str_smv__()};')
+
+            def __str_smv_output_event__(self):
+                return (f'_state={self.source.__str_smv__()}'
+                        f' & next(_state)={self.destination.__str_smv__()}'
+                        # f' & {self.input_event}'
+                        # f' & ({self.guard.__str_smv__()})'
+                        f' : TRUE;')
+
         def __init__(self, id, output_event, algorithm_0, algorithm_1):
             self.id = id
             self.output_event = output_event
@@ -330,9 +346,11 @@ class EFSM:
             # Example: 2/CNF(0:10101, 1:01101)
             return f'{self.id}/{self.output_event}(0:{self.algorithm_0}, 1:{self.algorithm_1})'
 
+        def __str_fbt__(self):
+            return f's{self.id}'
+
         def __str_smv__(self):
-            # 's_{algorithm_0}_{algorithm_1}
-            return f's_{self.algorithm_0}_{self.algorithm_1}'
+            return f's{self.id}_{self.algorithm_0}_{self.algorithm_1}'
 
         def __repr__(self):
             return f'State(id={self.id!r}, output_event={self.output_event!r}, algorithm_0={self.algorithm_0!r}, algorithm_1={self.algorithm_1!r})'
@@ -583,17 +601,17 @@ class EFSM:
         ECC = etree.SubElement(BasicFB, 'ECC')
         etree.SubElement(ECC, 'ECState', Name='START', x=_r(), y=_r())
         for state in self.states.values():
-            s = etree.SubElement(ECC, 'ECState', Name=f's_{state.id}', x=_r(), y=_r())
+            s = etree.SubElement(ECC, 'ECState', Name=state.__str_fbt__(), x=_r(), y=_r())
             algorithm = f'{state.algorithm_0}_{state.algorithm_1}'
             etree.SubElement(s, 'ECAction', Algorithm=algorithm, Output=state.output_event)
 
-        etree.SubElement(ECC, 'ECTransition', Source='START', Destination=f's_{self.initial_state}', Condition='INIT', x=_r(), y=_r())
+        etree.SubElement(ECC, 'ECTransition', Source='START', Destination=self.states[self.initial_state].__str_fbt__(), Condition='INIT', x=_r(), y=_r())
         for state in self.states.values():
             for transition in state.transitions:
                 etree.SubElement(ECC, 'ECTransition', x=_r(), y=_r(),
-                                 Source=f's_{transition.source.id}',
-                                 Destination=f's_{transition.destination.id}',
-                                 Condition=f'{transition.input_event}&{transition.guard.__str_fbt__()}')
+                                 Source=transition.source.__str_fbt__(),
+                                 Destination=transition.destination.__str_fbt__(),
+                                 Condition=transition.__str_fbt__())
 
         # BasicFB::Algorithms declaration
         algorithms = set((state.algorithm_0, state.algorithm_1) for state in self.states.values())
@@ -628,10 +646,7 @@ class EFSM:
         s.write('\nnext(_state) := case\n')
         for state in self.states.values():
             for transition in state.transitions:
-                s.write(f'    _state = {transition.source.__str_smv__()}'
-                        f' & {transition.input_event}'
-                        f' & ({transition.guard.__str_smv__()})'
-                        f' : {transition.destination.__str_smv__()};\n')
+                s.write('    ' + transition.__str_smv_destination__() + '\n')
         s.write('    TRUE: _state;\n')
         s.write('esac;\n')
 
@@ -643,11 +658,7 @@ class EFSM:
             s.write(f'\nnext({output_event}) := case\n')
             for state in self.states.values():
                 for transition in state.transitions:
-                    s.write(f'    _state = {transition.source.__str_smv__()}'
-                            # f' & {transition.input_event}'
-                            f' & next(_state) = {transition.destination.__str_smv__()}'
-                            # f' & ({transition.guard.__str_smv__()})'
-                            f' : TRUE;\n')
+                    s.write('    ' + transition.__str_smv_output_event__() + '\n')
             s.write('    TRUE: FALSE;\n')
             s.write('esac;\n')
 
