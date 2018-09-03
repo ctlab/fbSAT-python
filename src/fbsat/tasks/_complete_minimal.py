@@ -4,7 +4,6 @@ import time
 from . import CompleteAutomatonTask, MinimalPartialAutomatonTask, Task
 from ..efsm import EFSM
 from ..printers import log_br, log_debug, log_error, log_info, log_success
-from ..utils import s2b
 
 __all__ = ['MinimalCompleteAutomatonTask']
 
@@ -69,7 +68,7 @@ class MinimalCompleteAutomatonTask(Task):
 
         if self.P is None:
             log_debug('MinimalCompleteAutomatonTask: searching for P...')
-            for P in [1, 3, 5, 7, 9, 15]:
+            for P in [1, 3, 5, 7, 10, 15]:
                 log_br()
                 log_info(f'Trying P={P}...')
                 task = CompleteAutomatonTask(C=C, K=K, P=P, **self.subtask_config_complete)
