@@ -147,7 +147,7 @@ class ParseTreeGuard(Guard):
                     right = f'({right})'
                 return f'{left} | {right}'
             elif self.nodetype == 3:  # NOT
-                if self.child_left.nodetype == 0:
+                if self.child_left.nodetype in [0, 3]:
                     return f'~{self.child_left}'
                 else:
                     return f'~({self.child_left})'
@@ -168,18 +168,17 @@ class ParseTreeGuard(Guard):
             elif self.nodetype == 2:  # OR
                 left = self.child_left.__str_fbt__()
                 right = self.child_right.__str_fbt__()
-                if self.child_left.nodetype == 1:  # Left child is AND
-                    left = f'({left})'
-                if self.child_right.nodetype == 1:  # Right child is AND
-                    right = f'({right})'
+                # if self.child_left.nodetype == 1:  # Left child is AND
+                #     left = f'({left})'
+                # if self.child_right.nodetype == 1:  # Right child is AND
+                #     right = f'({right})'
                 return f'{left} OR {right}'
-            elif self.nodetype == 1:  # AND
-                return f'({self.child_left.__str_fbt__()} AND {self.child_right.__str_fbt__()})'
-            elif self.nodetype == 2:  # OR
-                return f'({self.child_left.__str_fbt__()} OR {self.child_right.__str_fbt__()})'
             elif self.nodetype == 3:  # NOT
                 # FIXME: maybe use '~' for boolean negation?
-                return f'NOT {self.child_left.__str_fbt__()}'
+                if self.child_left.nodetype in [0, 3]:
+                    return f'NOT {self.child_left.__str_fbt__()}'
+                else:
+                    return f'NOT({self.child_left.__str_fbt__()})'
             elif self.nodetype == 4:  # None
                 raise ValueError(f'why are you trying to display None-typed node?')
 
@@ -202,12 +201,11 @@ class ParseTreeGuard(Guard):
                 if self.child_right.nodetype == 1:  # Right child is AND
                     right = f'({right})'
                 return f'{left} | {right}'
-            elif self.nodetype == 1:  # AND
-                return f'({self.child_left.__str_smv__()} & {self.child_right.__str_smv__()})'
-            elif self.nodetype == 2:  # OR
-                return f'({self.child_left.__str_smv__()} | {self.child_right.__str_smv__()})'
             elif self.nodetype == 3:  # NOT
-                return f'!{self.child_left.__str_smv__()}'
+                if self.child_left.nodetype in [0, 3]:
+                    return f'!{self.child_left.__str_smv__()}'
+                else:
+                    return f'!({self.child_left.__str_smv__()})'
             elif self.nodetype == 4:  # None
                 raise ValueError(f'why are you trying to display None-typed node?')
 
