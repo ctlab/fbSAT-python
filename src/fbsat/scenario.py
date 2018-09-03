@@ -32,6 +32,7 @@ class OutputAction:
 
 class ScenarioElement:
     def __init__(self, input_event, input_values, output_actions):
+        assert len(output_actions) == 1
         self.input_event = input_event  # Event :: str
         self.input_values = input_values  # Values :: str  # TODO: what about [bool] ?
         self.output_actions = output_actions  # [OutputAction]
@@ -78,16 +79,10 @@ class Scenario:
     @classmethod
     def preprocess(cls, scenario):
         processed = cls()  # new Scenario
-        last = scenario.elements[0]
-        processed.elements.append(last)
-
-        for element in scenario.elements[1:]:
-            if last is None or element != last:
-                processed.elements.append(element)
-            # else:
-            #     print(f'skipping because elem = {element}, last = {last}')
-            last = element
-
+        processed.elements.append(scenario.elements[0])
+        for elem in scenario.elements[1:]:
+            if elem.output_event is not None or elem != processed.elements[-1]:
+                processed.elements.append(elem)
         return processed
 
     def __len__(self):
