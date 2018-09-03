@@ -200,15 +200,12 @@ class CompleteAutomatonTask(Task):
             AMO(color[v])
 
         comment('1.1. Start vertex corresponds to start state')
-        #   constraint color[1] = 1;
         add_clause(color[1][1])
 
         comment('1.2. Color definition')
         for c in closed_range(1, C):
             for v in tree.V_passive:
                 iff(color[v][c], color[tree.parent[v]][c])
-            for v in tree.V_active:
-                add_clause(-color[v][c], -color[tree.parent[v]][c])
 
         log_debug(f'1. Clauses: {so_far()}', symbol='STAT')
 
@@ -239,7 +236,7 @@ class CompleteAutomatonTask(Task):
 
                         rhs = []
                         for v in tree.V_active_eu[e][u]:
-                            # aux <-> color[tp(v),i] /\ color[v,j]
+                            # aux <-> color[tp(v),i] & color[v,j]
                             aux = new_variable()
                             p = tree.parent[v]
                             iff_and(aux, (color[p][i], color[v][j]))
