@@ -810,7 +810,7 @@ class EFSM:
         tree = self.scenario_tree
         root = tree[1]
 
-        for path in tree.paths_to_leaves():
+        for i, path in enumerate(tree.paths_to_leaves(), start=1):
             current_state = self.initial_state  # :: int
             current_values = root.data.output_values
 
@@ -822,11 +822,11 @@ class EFSM:
                 # log_debug(f'InputEvent: {input_event}, InputValues: {input_values}, State: {current_state} -> {new_state}, OutputEvent: {output_event}, OutputValues: {current_values} -> {new_values}', symbol=f'{j}/{len(path)-1}')
 
                 if output_event != element.output_event and new_values != element.output_values:
-                    log_error(f'incorrect output_event and output_values', symbol=f'{j}/{len(path)-1}')
+                    log_error(f'incorrect output_event and output_values', symbol=f'{i}:{j}/{len(path)-1}')
                 elif output_event != element.output_event:
-                    log_error(f'incorrect output_event (oe={output_event} != elem.oe={element.output_event})', symbol=f'{j}/{len(path)-1}')
+                    log_error(f'incorrect output_event (oe={output_event} != elem.oe={element.output_event})', symbol=f'{i}:{j}/{len(path)-1}')
                 elif new_values != element.output_values:
-                    log_error(f'incorrect output_values (ov={new_values} != elem.ov={element.output_values})', symbol=f'{j}/{len(path)-1}')
+                    log_error(f'incorrect output_values (ov={new_values} != elem.ov={element.output_values})', symbol=f'{i}:{j}/{len(path)-1}')
                 assert output_event == element.output_event
                 assert new_values == element.output_values
 
