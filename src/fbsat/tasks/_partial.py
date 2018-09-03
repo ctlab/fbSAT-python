@@ -119,12 +119,21 @@ class PartialAutomatonTask(Task):
         tree = self.scenario_tree
         V = tree.V
         E = tree.E
-        O = tree.O
-        # X = tree.X
+        O = tree.O  # noqa
+        X = tree.X  # noqa
         Z = tree.Z
         U = tree.U
-        # Y = tree.Y
+        Y = tree.Y  # noqa
 
+        log_debug(f'V = {V}')
+        log_debug(f'E = {E}')
+        log_debug(f'O = {O}')
+        log_debug(f'X = {X}')
+        log_debug(f'Z = {Z}')
+        log_debug(f'U = {U}')
+        log_debug(f'Y = {Y}')
+
+        comment = self.solver.comment
         new_variable = self.solver.new_variable
         add_clause = self.solver.add_clause
         declare_array = self.solver.declare_array
@@ -157,47 +166,46 @@ class PartialAutomatonTask(Task):
         #  CONSTRAINTS
         # =-=-=-=-=-=-=
 
-        so_far_state = [self.number_of_clauses]
+        so_far_state = [self.number_of_clauses, time.time()]
 
         def so_far():
             now = self.number_of_clauses
+            time_now = time.time()
             ans = now - so_far_state[0]
+            timing = time_now - so_far_state[1]
             so_far_state[0] = now
-            return ans
+            so_far_state[1] = time_now
+            return f'{ans} in {timing:.2f} s'
 
         # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 
-        # 1. Color constraints
-        # 1.0. ALO/AMO(color)
+        comment('1. Color constraints')
+        comment('1.0. ALO/AMO(color)')
         for v in closed_range(1, V):
             ALO(color[v])
             AMO(color[v])
 
-        # 1.1. Start vertex corresponds to start state
-        #   constraint color[1] = 1;
+        comment('1.1. Start vertex corresponds to start state')
         add_clause(color[1][1])
 
-        # 1.2. Color definition
-        for v in closed_range(2, V):
-            for c in closed_range(1, C):
-                if tree.output_event[v] == 0:
-                    # IF toe[v]=0 THEN color[v,c] <=> color[tp(v),c]
-                    iff(color[v][c], color[tree.parent[v]][c])
-                else:
-                    # IF toe[v]!=0 THEN not (color[v,c] and color[tp(v),c])
-                    add_clause(-color[v][c], -color[tree.parent[v]][c])
+        comment('1.2. Color definition')
+        for c in closed_range(1, C):
+            for v in tree.V_passive:
+                iff(color[v][c], color[tree.parent[v]][c])
+            for v in tree.V_active:
+                add_clause(-color[v][c], -color[tree.parent[v]][c])
 
         log_debug(f'1. Clauses: {so_far()}', symbol='STAT')
 
-        # 2. Transition constraints
-        # 2.0 ALO/AMO(transition)
+        comment('2. Transition constraints')
+        comment('2.0. ALO/AMO(transition)')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
                     ALO(transition[c][e][k])
                     AMO(transition[c][e][k])
 
-        # 2.1. (transition + first_fired definitions)
+        comment('2.1. (transition + first_fired definitions)')
         for i in closed_range(1, C):
             for e in closed_range(1, E):
                 for j in closed_range(1, C):
@@ -215,16 +223,15 @@ class PartialAutomatonTask(Task):
                         iff_or(leftright, lhs)
 
                         rhs = []
-                        for v in closed_range(2, V):
-                            if tree.output_event[v] != 0 and tree.input_event[v] == e and tree.input_number[v] == u:
-                                # aux <-> color[tp(v),i] /\ color[v,j]
-                                aux = new_variable()
-                                p = tree.parent[v]
-                                iff_and(aux, (color[p][i], color[v][j]))
-                                rhs.append(aux)
+                        for v in tree.V_active_eu[e][u]:
+                            # aux <-> color[tp(v),i] /\ color[v,j]
+                            aux = new_variable()
+                            p = tree.parent[v]
+                            iff_and(aux, (color[p][i], color[v][j]))
+                            rhs.append(aux)
                         iff_or(leftright, rhs)
 
-        # 2.2. Null-transitions are last
+        comment('2.2. Null-transitions are last')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K - 1):
@@ -232,16 +239,16 @@ class PartialAutomatonTask(Task):
 
         log_debug(f'2. Clauses: {so_far()}', symbol='STAT')
 
-        # 3. Output event constraints
-        # 3.0. ALO/AMO(output_event)
+        comment('3. Output event constraints')
+        comment('3.0. ALO/AMO(output_event)')
         for c in closed_range(1, C):
             ALO(output_event[c])
             AMO(output_event[c])
 
-        # 3.1. Start state does INITO (root's output event)
+        comment('3.1. Start state does INITO (root`s output event)')
         add_clause(output_event[1][tree.output_event[1]])
 
-        # 3.2. Output event is the same as in the tree
+        comment('3.2. Output event is the same as in the tree')
         for i in closed_range(1, C):
             for j in closed_range(1, C):
                 # OR_{e,k}(transition[i,e,k,j]) <=> ...
@@ -255,61 +262,58 @@ class PartialAutomatonTask(Task):
                 iff_or(leftright, lhs)
 
                 rhs = []
-                for v in closed_range(2, V):
-                    if tree.output_event[v] != 0:
-                        # aux <-> color[tp(v),i] & color[v,j] & output_event[j,toe(v)]
-                        aux = new_variable()
-                        p = tree.parent[v]
-                        o = tree.output_event[v]
-                        iff_and(aux, (color[p][i], color[v][j], output_event[j][o]))
-                        rhs.append(aux)
+                for v in tree.V_active:
+                    # aux <-> color[tp(v),i] & color[v,j] & output_event[j,toe(v)]
+                    aux = new_variable()
+                    p = tree.parent[v]
+                    o = tree.output_event[v]
+                    iff_and(aux, (color[p][i], color[v][j], output_event[j][o]))
+                    rhs.append(aux)
                 iff_or(leftright, rhs)
 
         log_debug(f'3. Clauses: {so_far()}', symbol='STAT')
 
-        # 4. Algorithm constraints
-        # 4.1. Start state does nothing
+        comment('4. Algorithm constraints')
+        comment('4.1. Start state does nothing')
         for z in closed_range(1, Z):
             add_clause(-algorithm_0[1][z])
             add_clause(algorithm_1[1][z])
 
-        # 4.2. Algorithms definition
-        for v in closed_range(2, V):
-            if tree.output_event[v] != 0:
-                for z in closed_range(1, Z):
-                    old = tree.output_value[tree.parent[v]][z]  # parent/tpa, no difference
-                    new = tree.output_value[v][z]
-                    for c in closed_range(1, C):
-                        if (old, new) == (False, False):
-                            imply(color[v][c], -algorithm_0[c][z])
-                        elif (old, new) == (False, True):
-                            imply(color[v][c], algorithm_0[c][z])
-                        elif (old, new) == (True, False):
-                            imply(color[v][c], -algorithm_1[c][z])
-                        elif (old, new) == (True, True):
-                            imply(color[v][c], algorithm_1[c][z])
+        comment('4.2. Algorithms definition')
+        for v in tree.V_active:
+            for z in closed_range(1, Z):
+                old = tree.output_value[tree.parent[v]][z]  # parent/tpa, no difference
+                new = tree.output_value[v][z]
+                for c in closed_range(1, C):
+                    if (old, new) == (False, False):
+                        imply(color[v][c], -algorithm_0[c][z])
+                    elif (old, new) == (False, True):
+                        imply(color[v][c], algorithm_0[c][z])
+                    elif (old, new) == (True, False):
+                        imply(color[v][c], -algorithm_1[c][z])
+                    elif (old, new) == (True, True):
+                        imply(color[v][c], algorithm_1[c][z])
 
         log_debug(f'4. Clauses: {so_far()}', symbol='STAT')
 
-        # 5. Firing constraints
-        # 5.0. only AMO(first_fired)
+        comment('5. Firing constraints')
+        comment('5.0. only AMO(first_fired)')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for u in closed_range(1, U):
                     AMO(first_fired[c][e][u])
 
-        # 5.1. (not_fired definition)
+        comment('5.1. (not_fired definition)')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for u in closed_range(1, U):
                     # not_fired[c,e,u,K] <=> OR_{v|passive,tie(v)=e,tin(v)=u}(color[v,c])
                     rhs = []
-                    for v in closed_range(2, V):
-                        if tree.output_event[v] == 0 and tree.input_event[v] == e and tree.input_number[v] == u:
-                            rhs.append(color[v][c])  # passive: color[v] == color[tp(v)] == color[tpa(v)]
+                    for v in tree.V_passive_eu[e][u]:
+                        rhs.append(color[v][c])  # passive: color[v] == color[tp(v)] == color[tpa(v)]
                     iff_or(not_fired[c][e][u][K], rhs)
 
-        # 5.2. not_fired extension
+        comment('5.2. not_fired extension')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for u in closed_range(1, U):
@@ -329,7 +333,7 @@ class PartialAutomatonTask(Task):
                     # iff_and(aux, rhs)
                     # imply(aux, -not_fired[c][e][u][1])
 
-        # 5.3. first_fired and not_fired interaction
+        comment('5.3. first_fired and not_fired interaction')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for u in closed_range(1, U):
@@ -343,8 +347,8 @@ class PartialAutomatonTask(Task):
         log_debug(f'5. Clauses: {so_far()}', symbol='STAT')
 
         if self.use_bfs:
-            # 6. BFS constraints
-            # 6.1. F_t
+            comment('6. BFS constraints')
+            comment('6.1. F_t')
             for i in closed_range(1, C):
                 for j in closed_range(1, C):
                     # t_ij <=> OR_{e,k}(transition_iekj)
@@ -354,7 +358,7 @@ class PartialAutomatonTask(Task):
                             rhs.append(transition[i][e][k][j])
                     iff_or(bfs_transition[i][j], rhs)
 
-            # 6.2. F_p
+            comment('6.2. F_p')
             for i in closed_range(1, C):
                 for j in closed_range(1, i):  # to avoid ambiguous unused variable
                     add_clause(-bfs_parent[j][i])
@@ -365,11 +369,11 @@ class PartialAutomatonTask(Task):
                         rhs.append(-bfs_transition[k][j])
                     iff_and(bfs_parent[j][i], rhs)
 
-            # 6.3. F_ALO(p)
+            comment('6.3. F_ALO(p)')
             for j in closed_range(2, C):
                 add_clause(*[bfs_parent[j][i] for i in closed_range(1, j - 1)])
 
-            # 6.4. F_BFS(p)
+            comment('6.4. F_BFS(p)')
             for k in closed_range(1, C):
                 for i in closed_range(k + 1, C):
                     for j in closed_range(i + 1, C - 1):
@@ -378,8 +382,8 @@ class PartialAutomatonTask(Task):
 
             log_debug(f'6. Clauses: {so_far()}', symbol='STAT')
 
-        # A. AD-HOCs
-        # A.1. Distinct transitions
+        comment('A. AD-HOCs')
+        comment('A.1. Distinct transitions')
         if self.is_distinct:
             for i in closed_range(1, C):
                 for e in closed_range(1, E):

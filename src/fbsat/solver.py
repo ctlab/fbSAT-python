@@ -128,6 +128,9 @@ class StreamSolver(Solver):
         self.number_of_variables = 0
         self.number_of_clauses = 0
 
+    def comment(self, s):
+        self.stream.write('c ' + s + '\n')
+
     def new_variable(self):
         self.number_of_variables += 1
         return self.number_of_variables
@@ -222,6 +225,9 @@ class IncrementalSolver(Solver):
                                         stdin=subprocess.PIPE, stdout=subprocess.PIPE)
         self.number_of_variables = 0
         self.number_of_clauses = 0
+
+    def comment(self, s):
+        self.process.stdin.write('c ' + s + '\n')
 
     def new_variable(self):
         self.number_of_variables += 1
