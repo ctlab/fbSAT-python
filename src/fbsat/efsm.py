@@ -693,7 +693,7 @@ class EFSM:
         for algorithm_0, algorithm_1 in algorithms:
             a = etree.SubElement(BasicFB, 'Algorithm', Name=f'{algorithm_0}_{algorithm_1}')
             st = algorithm2st(tree.output_variable_names, algorithm_0, algorithm_1)
-            etree.SubElement(a, 'ST', Text=f'{output_event}:=FALSE;\n{st}')
+            etree.SubElement(a, 'ST', Text=st)
 
         return etree.tostring(FBType, encoding='UTF-8', xml_declaration=True, pretty_print=True).decode()
 
