@@ -107,8 +107,7 @@ class Scenario:
         scenarios = []  # [Scenario]
 
         with open_maybe_gzip(filename) as f:
-            # number_of_scenarios = int(f.readline())
-            f.readline()
+            number_of_scenarios = int(f.readline())
 
             for line in map(str.strip, f):
                 scenario = Scenario()
@@ -132,6 +131,9 @@ class Scenario:
                     scenario.add_element(input_event, input_values, output_actions)
 
                 scenarios.append(scenario)
+
+        if number_of_scenarios != len(scenarios):
+            log_warn(f'Number of scenarios mismatch: specified {number_of_scenarios}, in fact {len(scenarios)}')
 
         log_debug(f'Done reading {len(scenarios)} scenarios with total {sum(map(len, scenarios))} elements in {time.time() - time_start_reading:.2f} s')
         return scenarios
@@ -187,8 +189,8 @@ class ScenarioTree(treelib.Tree):
         def make_array2(d1, d2):
             return [[None for _ in closed_range(d2)] for _ in closed_range(d1)]
 
-        self.parent = make_array(self.V)  # 0..V
-        self.previous_active = make_array(self.V)  # 0..V
+        self.parent = make_array(self.V)  # 1..V
+        self.previous_active = make_array(self.V)  # 1..V
         self.input_event = make_array(self.V)  # 1..E
         self.output_event = make_array(self.V)  # 0..O
         self.input_number = make_array(self.V)  # 1..U
@@ -231,6 +233,23 @@ class ScenarioTree(treelib.Tree):
         for v in closed_range(1, self.V):
             for z, c in enumerate(self[v].data.output_values, start=1):
                 self.output_value[v][z] = {'0': False, '1': True}[c]
+
+        self.V_active = tuple(v for v in closed_range(2, self.V)
+                              if self.output_event[v] != 0)
+        self.V_passive = tuple(v for v in closed_range(2, self.V)
+                               if self.output_event[v] == 0)
+
+        self.V_active_eu = [None] + [[None] + [list() for _ in closed_range(1, self.U)]
+                                     for _ in closed_range(1, self.E)]
+        self.V_passive_eu = [None] + [[None] + [list() for _ in closed_range(1, self.U)]
+                                      for _ in closed_range(1, self.E)]
+        for v in closed_range(2, self.V):
+            e = self.input_event[v]
+            u = self.input_number[v]
+            if self.output_event[v] != 0:
+                self.V_active_eu[e][u].append(v)
+            else:
+                self.V_passive_eu[e][u].append(v)
 
     @staticmethod
     def from_files(filename_scenarios, filename_predicate_names, filename_output_variable_names, preprocess=True):
