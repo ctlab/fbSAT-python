@@ -238,7 +238,6 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
                       outdir=outdir)
         task = FullAutomatonTask(**config)
         full_automaton = task.run(T)  # noqa
-        task.finalize()
 
     elif strategy == 'full-min':
         log_info('MinimalFull strategy')
@@ -274,7 +273,6 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
                       outdir=outdir)
         task = PartialAutomatonTask(**config)
         partial_automaton = task.run(T)  # noqa
-        task.finalize()
 
     elif strategy == 'partial-min':
         log_info('MinimalPartial strategy')
@@ -308,7 +306,6 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
                       outdir=outdir)
         task = CompleteAutomatonTask(**config)
         complete_automaton = task.run(N)  # noqa
-        task.finalize()
 
     elif strategy == 'complete-min':
         log_info('MinimalComplete strategy')
