@@ -11,7 +11,7 @@ __all__ = ['MinimalPartialAutomatonTask']
 
 class MinimalPartialAutomatonTask(Task):
 
-    def __init__(self, scenario_tree, *, C=None, K=None, T=None, use_bfs=True, solver_cmd=None, is_incremental=False, is_filesolver=False, outdir=''):
+    def __init__(self, scenario_tree, *, C=None, K=None, T=None, use_bfs=True, is_distinct=False, solver_cmd=None, is_incremental=False, is_filesolver=False, outdir=''):
         self.scenario_tree = scenario_tree
         self.C = C
         self.K = K
@@ -19,6 +19,7 @@ class MinimalPartialAutomatonTask(Task):
         self.outdir = outdir
         self.subtask_config = dict(scenario_tree=scenario_tree,
                                    use_bfs=use_bfs,
+                                   is_distinct=is_distinct,
                                    solver_cmd=solver_cmd,
                                    is_incremental=is_incremental,
                                    is_filesolver=is_filesolver,

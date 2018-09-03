@@ -20,7 +20,7 @@ class PartialAutomatonTask(Task):
     Reduction = namedtuple('Reduction', VARIABLES + ' totalizer')
     Assignment = namedtuple('Assignment', VARIABLES + ' C K T')
 
-    def __init__(self, scenario_tree, *, C, K=None, use_bfs=True, solver_cmd=None, is_incremental=False, is_filesolver=False, outdir=''):
+    def __init__(self, scenario_tree, *, C, K=None, use_bfs=True, is_distinct=False, solver_cmd=None, is_incremental=False, is_filesolver=False, outdir=''):
         assert C is not None
 
         if K is None:
@@ -30,6 +30,7 @@ class PartialAutomatonTask(Task):
         self.C = C
         self.K = K
         self.use_bfs = use_bfs
+        self.is_distinct = is_distinct
         self.outdir = outdir
         self.is_incremental = is_incremental
         self.is_filesolver = is_filesolver
@@ -379,13 +380,14 @@ class PartialAutomatonTask(Task):
 
         # A. AD-HOCs
         # A.1. Distinct transitions
-        for i in closed_range(1, C):
-            for e in closed_range(1, E):
-                for k in closed_range(1, K):
-                    # transition[i,e,k,j] => AND_{k_!=k}(~transition[i,e,k_,j])
-                    for j in closed_range(1, C):
-                        for k_ in closed_range(k + 1, K):
-                            imply(transition[i][e][k][j], -transition[i][e][k_][j])
+        if self.is_distinct:
+            for i in closed_range(1, C):
+                for e in closed_range(1, E):
+                    for k in closed_range(1, K):
+                        # transition[i,e,k,j] => AND_{k_!=k}(~transition[i,e,k_,j])
+                        for j in closed_range(1, C):
+                            for k_ in closed_range(k + 1, K):
+                                imply(transition[i][e][k][j], -transition[i][e][k_][j])
 
         log_debug(f'A. Clauses: {so_far()}', symbol='STAT')
 

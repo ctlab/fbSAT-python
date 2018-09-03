@@ -76,7 +76,7 @@ CONTEXT_SETTINGS = dict(
               help='Use BFS symmetry-breaking constraints')
 @click.option('--distinct/--no-distinct', 'is_distinct', is_flag=True,
               default=False, show_default=True,
-              help='[complete] Distinct transitions')
+              help='Distinct transitions')
 @click.option('--forbid-or/--no-forbid-or', 'is_forbid_or', is_flag=True,
               default=False, show_default=True,
               help='[complete] Distinct transitions')
@@ -267,6 +267,7 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
         config = dict(scenario_tree=scenario_tree,
                       C=C, K=K,
                       use_bfs=use_bfs,
+                      is_distinct=is_distinct,
                       solver_cmd=sat_solver,
                       is_incremental=is_incremental,
                       is_filesolver=is_filesolver,
@@ -284,6 +285,7 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
         config = dict(scenario_tree=scenario_tree,
                       C=C, K=K, T=T,
                       use_bfs=use_bfs,
+                      is_distinct=is_distinct,
                       solver_cmd=sat_solver,
                       is_incremental=is_incremental,
                       is_filesolver=is_filesolver,
