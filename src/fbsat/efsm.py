@@ -255,6 +255,83 @@ class ParseTreeGuard(Guard):
         self.root = left
         return self
 
+    @classmethod
+    def from_formula(cls, formula, *, names):
+        self = cls.__new__(cls)
+        self.Node.names = names
+
+        def process(e):
+            if hasattr(e, 'operator'):
+                if e.operator == '&':
+                    root = self.Node(1, 0)
+                    left = process(e.args[0])
+                    right = process(e.args[1])
+                elif e.operator == '|':
+                    root = self.Node(2, 0)
+                    left = process(e.args[0])
+                    right = process(e.args[1])
+                elif e.operator == '~':
+                    root = self.Node(3, 0)
+                    left = process(e.args[0])
+                    right = None
+                else:
+                    log_warn(f'Unknown operator: {e.operator}')
+
+                if left:
+                    left.parent = root
+                    root.child_left = left
+                if right:
+                    right.parent = root
+                    root.child_right = right
+
+                return root
+            elif hasattr(e, 'obj'):
+                return self.Node(0, names.index(e.obj) + 1)
+            else:
+                raise ValueError('TRUE/FALSE formula')
+
+        # pip install boolean.py
+        from boolean import BooleanAlgebra
+        self.root = process(BooleanAlgebra().parse(formula))
+        return self
+
+    @classmethod
+    def new_random(cls, P, *, names):
+        import random
+        self = cls.__new__(cls)
+        self.Node.names = names
+        X = len(names)
+
+        def rnd_node(P):
+            if P == 1:
+                terminal = random.randint(1, X)
+                return self.Node(0, terminal)
+            elif P == 2:
+                nodetype = 3
+            else:
+                nodetype = random.randint(1, 3)
+            root = self.Node(nodetype, 0)
+            if nodetype == 3:
+                child = rnd_node(P - 1)
+                child.parent = root
+                root.child_left = child
+            else:
+                P_ = random.randint(1, P - 2)
+                left = rnd_node(P_)
+                right = rnd_node(P - P_ - 1)
+                left.parent = root
+                right.parent = root
+                root.child_left = left
+                root.child_right = right
+            return root
+
+        self.root = rnd_node(P)
+        from boolean import BooleanAlgebra
+        try:
+            return cls.from_formula(str(BooleanAlgebra().parse(str(self)).simplify()), names=names)
+        except:
+            return cls.new_random(P, names=names)
+
     def eval(self, input_values):
         # input_values :: [1..X]:Bool
         return self.root.eval(input_values)
