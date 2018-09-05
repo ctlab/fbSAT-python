@@ -4,6 +4,7 @@ import random
 import time
 from abc import ABC, abstractmethod
 from collections import OrderedDict
+from io import StringIO
 
 from .printers import *
 from .utils import *
@@ -153,6 +154,9 @@ class ParseTreeGuard(Guard):
                     return f'~({self.child_left})'
             elif self.nodetype == 4:  # None
                 raise ValueError(f'why are you trying to display None-typed node?')
+
+        def __str_gv__(self):
+            return str(self)
 
         def __str_fbt__(self):
             if self.nodetype == 0:  # Terminal
@@ -343,7 +347,7 @@ class ParseTreeGuard(Guard):
         return str(self.root)
 
     def __str_gv__(self):
-        return str(self)
+        return self.root.__str_gv__()
 
     def __str_fbt__(self):
         return self.root.__str_fbt__()
@@ -371,6 +375,9 @@ class EFSM:
             def __str__(self):
                 # Example: 2->3 on REQ if (x1 & x2)
                 return f'{self.source.id} to {self.destination.id} on {self.input_event} if {self.guard}'
+
+            def __str_gv__(self, k):
+                return f'{self.source.id} -> {self.destination.id} [label="{k}:{self.input_event}/{self.guard.__str_gv__()}"]'
 
             def __str_fbt__(self):
                 return f'{self.input_event}&{self.guard.__str_fbt__()}'
@@ -420,6 +427,11 @@ class EFSM:
         def __str__(self):
             # Example: 2/CNF(0:10101, 1:01101)
             return f'{self.id}/{self.output_event}(0:{self.algorithm_0}, 1:{self.algorithm_1})'
+
+        def __str_gv__(self):
+            return f'{self.id} [label="<p>{self.id}|{self.output_event}|{{0:{self.algorithm_0}|1:{self.algorithm_1}}}" shape=Mrecord]'
+            # return f'{self.id} [label=<\n<TABLE CELLBORDER="1" CELLSPACING="0" STYLE="ROUNDED">\n<TR>\n    <TD WIDTH="30" PORT="p">{self.id}</TD>\n    <TD>{self.output_event}</TD>\n<TD BALIGN="LEFT">0:{self.algorithm_0}<BR/>1:{self.algorithm_1}</TD>\n</TR>\n</TR>\n</TABLE>> shape=plaintext]'
+            # return f'{self.id} [label="{self.id}:{self.output_event}({self.algorithm_0}_{self.algorithm_1})"]'
 
         def __str_fbt__(self):
             return f's{self.id}'
@@ -615,18 +627,26 @@ class EFSM:
                 log_debug(f'└──{state.transitions[-1]}')
 
     def get_gv_string(self):
-        lines = ['digraph {',
-                 # '    rankdir=LR;'
-                 '    // States',
-                 '    { node []',
-                 *(f'      {state.id} [label="{state.id}:{state.output_event}({state.algorithm_0}_{state.algorithm_1})"];'
-                   for state in self.states.values()),
-                 '    }',
-                 '    // Transitions',
-                 *(f'    {transition.source.id} -> {transition.destination.id} [label="{k}:{transition.input_event}/{transition.guard.__str_gv__()}"];'
-                     for state in self.states.values() for k, transition in enumerate(state.transitions, start=1)),
-                 '}']
-        return '\n'.join(lines)
+        s = StringIO()
+        s.write('digraph {\n')
+        for _x in ['graph', 'node', 'edge']:
+            s.write(f'    {_x} [fontname="Source Code Pro,monospace" fontsize="12"]\n')
+
+        s.write('    // States\n')
+        s.write('    { node [margin="0.05,0.01"]\n')
+        # s.write('    rankdir=LR;\n')
+        for state in self.states.values():
+            for line in state.__str_gv__().split('\n'):
+                s.write('      ' + line + '\n')
+        s.write('    }\n')
+
+        s.write('    // Transitions\n')
+        for state in self.states.values():
+            for k, transition in enumerate(state.transitions, start=1):
+                s.write('    ' + transition.__str_gv__(k) + '\n')
+
+        s.write('}\n')
+        return s.getvalue()
 
     def get_fbt_string(self):
         from lxml import etree
@@ -698,7 +718,6 @@ class EFSM:
         return etree.tostring(FBType, encoding='UTF-8', xml_declaration=True, pretty_print=True).decode()
 
     def get_smv_string(self):
-        from io import StringIO
         s = StringIO()
 
         s.write('MODULE main()\n')
@@ -765,7 +784,7 @@ class EFSM:
         log_debug(f'Dumping EFSM in GV format to <{filename}>...')
 
         with open(filename, 'w') as f:
-            f.write(self.get_gv_string() + '\n')
+            f.write(self.get_gv_string())
 
     def write_fbt(self, filename):
         log_debug(f'Dumping EFSM in FBT format to <{filename}>...')
