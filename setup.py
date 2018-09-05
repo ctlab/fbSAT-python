@@ -8,6 +8,7 @@ def main():
         'click',
         'regex',
         'treelib',
+        'lxml'
     ]
     if sys.platform == 'win32':
         install_requires.append('colorama')

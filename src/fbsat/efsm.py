@@ -6,6 +6,8 @@ from abc import ABC, abstractmethod
 from collections import OrderedDict
 from io import StringIO
 
+from lxml import etree
+
 from .printers import *
 from .utils import *
 
@@ -649,8 +651,6 @@ class EFSM:
         return s.getvalue()
 
     def get_fbt_string(self):
-        from lxml import etree
-
         def _r():
             return str(random.randint(1, 1000))
 
