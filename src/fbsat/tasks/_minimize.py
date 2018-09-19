@@ -11,7 +11,7 @@ from ..utils import NotBool, closed_range, parse_raw_assignment_bool, parse_raw_
 
 __all__ = ['MinimizeGuardTask']
 
-VARIABLES = 'nodetype terminal child_left child_right parent value child_value_left child_value_right'
+VARIABLES = 'nodetype terminal parent child_left child_right value child_value_left child_value_right'
 
 
 class MinimizeGuardTask(Task):
@@ -124,15 +124,13 @@ class MinimizeGuardTask(Task):
         X = self.scenario_tree.X
         U = len(self.inputs) - 1  # Actually, this is U_, dont be confused with the real tree.U!
 
-        new_variable = self.solver.new_variable
+        comment = self.solver.comment
         add_clause = self.solver.add_clause
         declare_array = self.solver.declare_array
         ALO = self.solver.ALO
         AMO = self.solver.AMO
         imply = self.solver.imply
         iff = self.solver.iff
-        iff_and = self.solver.iff_and
-        iff_or = self.solver.iff_or
 
         # =-=-=-=-=-=
         #  VARIABLES
@@ -164,41 +162,65 @@ class MinimizeGuardTask(Task):
 
         # constraints
 
-        # 1. Nodetype constraints
-        # 1.0. ALO/AMO(nodetype)
+        comment('7. Parent and children constraints')
+        comment('7.0a. ALO/AMO(parent)')
         for p in closed_range(1, P):
-            ALO(nodetype[p])
-            AMO(nodetype[p])
+            ALO(parent[p])
+            AMO(parent[p])
 
-        # 1.1. AND/OR nodes cannot have numbers P-1 or P
-        if P >= 1:
-            add_clause(-nodetype[P][1])
-            add_clause(-nodetype[P][2])
-        if P >= 2:
-            add_clause(-nodetype[P - 1][1])
-            add_clause(-nodetype[P - 1][2])
+        comment('7.0b. ALO/AMO(child_left)')
+        for p in closed_range(1, P):
+            ALO(child_left[p])
+            AMO(child_left[p])
 
-        # 1.2. NOT nodes cannot have number P
-        add_clause(-nodetype[P][3])
+        comment('7.0c. ALO/AMO(child_right)')
+        for p in closed_range(1, P):
+            ALO(child_right[p])
+            AMO(child_right[p])
 
-        log_debug(f'1. Clauses: {so_far()}', symbol='STAT')
+        comment('7.1. Root has no parent')
+        add_clause(parent[1][0])
 
-        # 2. Terminals constraints
-        # 2.0. ALO/AMO(terminal)
+        comment('7.2. All nodes (except root) have parent with lesser number')
+        for p in closed_range(2, P):
+            # OR_par(parent[p,par])
+            rhs = []
+            for par in closed_range(1, p - 1):
+                rhs.append(parent[p][par])
+            add_clause(*rhs)
+
+        comment('7.3. parent<->child relation')
+        for p in closed_range(1, P - 1):
+            for ch in closed_range(p + 1, P):
+                # parent[ch,p] => (child_left[p,ch] | child_right[p,ch])
+                add_clause(-parent[ch][p],
+                           child_left[p][ch],
+                           child_right[p][ch])
+
+        log_debug(f'7. Clauses: {so_far()}', symbol='STAT')
+
+        comment('9. Terminals constraints')
+        comment('9.0. ALO/AMO(terminal)')
         for p in closed_range(1, P):
             ALO(terminal[p])
             AMO(terminal[p])
 
-        # 2.1. Only terminals have associated terminal variables
+        comment('9.1. Only terminals have associated terminal variables')
         for p in closed_range(1, P):
             iff(nodetype[p][0], -terminal[p][0])
 
-        # 2.2. Terminals have no children
+        comment('9.2. Terminals have no children')
         for p in closed_range(1, P):
             imply(nodetype[p][0], child_left[p][0])
             imply(nodetype[p][0], child_right[p][0])
 
-        # 2.3. Terminals have value from associated input variable
+        comment('9.3. Terminal: child_value_left and child_value_right are False')
+        for p in closed_range(1, P):
+            for u in closed_range(1, U):
+                imply(nodetype[p][0], -child_value_left[p][u])
+                imply(nodetype[p][0], -child_value_right[p][u])
+
+        comment('9.4. Terminals have value from associated input variable')
         for p in closed_range(1, P):
             for x in closed_range(1, X):
                 # terminal[p,x] -> AND_u( value[p,u] <-> inputs[u,x] )
@@ -208,161 +230,174 @@ class MinimizeGuardTask(Task):
                     else:
                         imply(terminal[p][x], -value[p][u])
 
-        log_debug(f'2. Clauses: {so_far()}', symbol='STAT')
+        log_debug(f'9. Clauses: {so_far()}', symbol='STAT')
 
-        # 3. Parent and children constraints
-        # 3.0. ALO/AMO(parent,child_left,child_right)
-        for p in closed_range(1, P):
-            ALO(parent[p])
-            AMO(parent[p])
-        for p in closed_range(1, P):
-            ALO(child_left[p])
-            AMO(child_left[p])
-        for p in closed_range(1, P):
-            ALO(child_right[p])
-            AMO(child_right[p])
+        comment('10. AND/OR nodes constraints')
+        comment('10.0. AND/OR nodes cannot have numbers P-1 or P')
+        if P >= 1:
+            add_clause(-nodetype[P][1])
+            add_clause(-nodetype[P][2])
+        if P >= 2:
+            add_clause(-nodetype[P - 1][1])
+            add_clause(-nodetype[P - 1][2])
 
-        # 3.1. Root has no parent
-        add_clause(parent[1][0])
-
-        # 3.2. BFS: typed nodes (except root) have parent with lesser number
-        for p in closed_range(2, P):
-            add_clause(-parent[p][0])
-            for p_ in closed_range(p + 1, P):
-                add_clause(-parent[p][p_])
-
-        # 3.3. parent<->child relation
-        for p in closed_range(1, P - 1):
-            for ch in closed_range(p + 1, P):
-                # parent[ch,p] -> child_left[p,ch] | child_right[p,ch]
-                add_clause(-parent[ch][p], child_left[p][ch], child_right[p][ch])
-
-        # 3.4. Node with number P have no children; P-1 -- no right child
-        add_clause(child_left[P][0])
-        add_clause(child_right[P][0])
-        for u in closed_range(1, U):
-            add_clause(-child_value_left[P][u])
-            add_clause(-child_value_right[P][u])
-        if P > 1:
-            add_clause(child_right[P - 1][0])
-            for u in closed_range(1, U):
-                add_clause(-child_value_right[P - 1][u])
-
-        log_debug(f'3. Clauses: {so_far()}', symbol='STAT')
-
-        # 4. AND/OR nodes constraints
-        # 4.1. AND/OR: left child has greater number
+        comment('10.1. AND/OR: left child has greater number')
         for p in closed_range(1, P - 2):
-            for p_ in closed_range(0, p):
-                imply(nodetype[p][1], -child_left[p][p_])
-                imply(nodetype[p][2], -child_left[p][p_])
-            imply(nodetype[p][1], -child_left[p][P])
-            imply(nodetype[p][2], -child_left[p][P])
+            # nodetype[p,1or2] => OR_{ch from p+1 to P-1}( child_left[p,ch] )
+            rhs = []
+            for ch in closed_range(p + 1, P - 1):
+                rhs.append(child_left[p][ch])
+            add_clause(-nodetype[p][1], *rhs)
+            add_clause(-nodetype[p][2], *rhs)
 
-        # 4.2. AND/OR: right child is adjacent (+1) to left
+        comment('10.2. AND/OR: right child is adjacent (+1) to left')
         for p in closed_range(1, P - 2):
             for ch in closed_range(p + 1, P - 1):
-                # (nodetype[p,1or2] & child_left[p][ch]) -> child_right[p][ch+1]
                 for nt in [1, 2]:
-                    add_clause(-nodetype[p][nt], -child_left[p][ch], child_right[p][ch + 1])
+                    # (nodetype[p,1or2] & child_left[p,ch]) => child_right[p,ch+1]
+                    add_clause(-nodetype[p][nt],
+                               -child_left[p][ch],
+                               child_right[p][ch + 1])
 
-        # 4.3. AND/OR: children's parents
+        comment('10.3. AND/OR: children`s parents')
         for p in closed_range(1, P - 2):
             for ch in closed_range(p + 1, P - 1):
-                # (nodetype[p,1or2] & child_left[p,ch]) -> (parent[ch,p] & parent[ch+1,p])
                 for nt in [1, 2]:
-                    add_clause(-nodetype[p][nt], -child_left[p][ch], parent[ch][p])
-                    add_clause(-nodetype[p][nt], -child_left[p][ch], parent[ch + 1][p])
+                    # (nodetype[p,1or2] & child_left[p,ch]) => (parent[ch,p] & parent[ch+1,p])
+                    x1 = nodetype[p][nt]
+                    x2 = child_left[p][ch]
+                    x3 = parent[ch][p]
+                    x4 = parent[ch + 1][p]
+                    add_clause(-x1, -x2, x3)
+                    add_clause(-x1, -x2, x4)
 
-        # 4.4a AND/OR: child_value_left is a value of left child
+        comment('10.4a. AND/OR: child_value_left is a value of left child')
         for p in closed_range(1, P - 2):
             for ch in closed_range(p + 1, P - 1):
                 for u in closed_range(1, U):
-                    # (nodetype[p,1or2] & child_left[p,ch]) -> (child_value_left[p,u] <-> value[ch,u])
                     for nt in [1, 2]:
-                        add_clause(-nodetype[p][nt], -child_left[p][ch], -child_value_left[p][u], value[ch][u])
-                        add_clause(-nodetype[p][nt], -child_left[p][ch], child_value_left[p][u], -value[ch][u])
+                        # (nodetype[p,1or2] & child_left[p,ch]) => (child_value_left[p,u] <=> value[ch,u])
+                        x1 = nodetype[p][nt]
+                        x2 = child_left[p][ch]
+                        x3 = child_value_left[p][u]
+                        x4 = value[ch][u]
+                        add_clause(-x1, -x2, -x3, x4)
+                        add_clause(-x1, -x2, x3, -x4)
 
-        # 4.4b AND/OR: child_value_right is a value of right child
+        comment('10.4b. AND/OR: child_value_right is a value of right child')
         for p in closed_range(1, P - 2):
             for ch in closed_range(p + 2, P):
                 for u in closed_range(1, U):
-                    # (nodetype[p,1or2] & child_left[p,ch]) -> (child_value_left[p,u] <-> value[ch,u])
                     for nt in [1, 2]:
-                        add_clause(-nodetype[p][nt], -child_right[p][ch], -child_value_right[p][u], value[ch][u])
-                        add_clause(-nodetype[p][nt], -child_right[p][ch], child_value_right[p][u], -value[ch][u])
+                        # (nodetype[p,1or2] & child_right[p,ch]) => (child_value_right[p,u] <=> value[ch,u])
+                        x1 = nodetype[p][nt]
+                        x2 = child_right[p][ch]
+                        x3 = child_value_right[p][u]
+                        x4 = value[ch][u]
+                        add_clause(-x1, -x2, -x3, x4)
+                        add_clause(-x1, -x2, x3, -x4)
 
-        # 4.5a AND: value is calculated as a conjunction of children
+        comment('10.5a. AND: value is calculated as a conjunction of children')
         for p in closed_range(1, P - 2):
             for u in closed_range(1, U):
-                # nodetype[p,1] -> (value[p,u] <-> child_value_left[p,u] & child_value_right[p,u])
-                add_clause(-nodetype[p][1], value[p][u], -child_value_left[p][u], -child_value_right[p][u])
-                add_clause(-nodetype[p][1], -value[p][u], child_value_left[p][u])
-                add_clause(-nodetype[p][1], -value[p][u], child_value_right[p][u])
+                # nodetype[p,1] => (value[p,u] <=> cvl[p,u] & cvr[p,u])
+                x1 = nodetype[p][1]
+                x2 = value[p][u]
+                x3 = child_value_left[p][u]
+                x4 = child_value_right[p][u]
+                add_clause(-x1, x2, -x3, -x4)
+                add_clause(-x1, -x2, x3)
+                add_clause(-x1, -x2, x4)
 
-        # 4.5b OR: value is calculated as a disjunction of children
+        comment('10.5b. OR: value is calculated as a disjunction of children')
         for p in closed_range(1, P - 2):
             for u in closed_range(1, U):
-                # nodetype[p,2] -> (value[p,u] <-> child_value_left[p,u] & child_value_right[p,u])
-                add_clause(-nodetype[p][2], -value[p][u], child_value_left[p][u], child_value_right[p][u])
-                add_clause(-nodetype[p][2], value[p][u], -child_value_left[p][u])
-                add_clause(-nodetype[p][2], value[p][u], -child_value_right[p][u])
+                # nodetype[p,2] => (value[p,u] <=> cvl[p,u] | cvr[p,u])
+                x1 = nodetype[p][2]
+                x2 = value[p][u]
+                x3 = child_value_left[p][u]
+                x4 = child_value_right[p][u]
+                add_clause(-x1, -x2, x3, x4)
+                add_clause(-x1, x2, -x3)
+                add_clause(-x1, x2, -x4)
 
-        log_debug(f'4. Clauses: {so_far()}', symbol='STAT')
+        log_debug(f'10. Clauses: {so_far()}', symbol='STAT')
 
-        # 5. NOT nodes constraints
-        # 5.1. NOT: left child has greater number
+        comment('11. NOT nodes constraints')
+        comment('11.0. NOT nodes cannot have number P')
+        add_clause(-nodetype[P][3])
+
+        comment('11.1. NOT: left child has greater number')
         for p in closed_range(1, P - 1):
-            for p_ in closed_range(0, p):
-                imply(nodetype[p][3], -child_left[p][p_])
+            # nodetype[p,3] => OR_ch(child_left[p,ch])
+            rhs = []
+            for ch in closed_range(p + 1, P):
+                rhs.append(child_left[p][ch])
+            add_clause(-nodetype[p][3], *rhs)
 
-        # 5.2. NOT: no right child
+        comment('11.2. NOT: child`s parents')
+        for p in closed_range(1, P - 1):
+            for ch in closed_range(p + 1, P):
+                # (nodetype[p]=3 & child_left[p]=ch) => parent[ch] = p
+                add_clause(-nodetype[p][3],
+                           -child_left[p][ch],
+                           parent[ch][p])
+
+        comment('11.3. NOT: no right child')
         for p in closed_range(1, P - 1):
             imply(nodetype[p][3], child_right[p][0])
 
-        # 5.3. NOT: child's parents
-        for p in closed_range(1, P - 1):
-            for ch in closed_range(p + 1, P):
-                add_clause(-nodetype[p][3], -child_left[p][ch], parent[ch][p])
-
-        # 5.4a NOT: child_value_left is a value of left child
+        comment('11.4a. NOT: child_value_left is a value of left child')
         for p in closed_range(1, P - 1):
             for ch in closed_range(p + 1, P):
                 for u in closed_range(1, U):
-                    # (nodetype[p,3] & child_left[p,ch]) -> (child_value_left[p,u] <-> value[ch,u])
-                    add_clause(-nodetype[p][3], -child_left[p][ch], -child_value_left[p][u], value[ch][u])
-                    add_clause(-nodetype[p][3], -child_left[p][ch], child_value_left[p][u], -value[ch][u])
+                    # (nodetype[p,3] & child_left[p,ch]) => (cvl[p,u] <=> value[ch,u])
+                    x1 = nodetype[p][3]
+                    x2 = child_left[p][ch]
+                    x3 = value[ch][u]
+                    x4 = child_value_left[p][u]
+                    add_clause(-x1, -x2, -x3, x4)
+                    add_clause(-x1, -x2, x3, -x4)
 
-        # 5.4b NOT: child_value_right is False
+        comment('11.4b. NOT: child_value_right is False')
         for p in closed_range(1, P - 1):
             for u in closed_range(1, U):
-                # nodetype[p,3] -> ~child_value_right[p,u]
                 imply(nodetype[p][3], -child_value_right[p][u])
 
-        # 5.5. NOT: value is calculated as a negation of child
+        comment('11.5. NOT: value is calculated as a negation of child')
         for p in closed_range(1, P - 1):
             for u in closed_range(1, U):
-                # nodetype[p,3] -> (value[p,u] <-> ~child_value_left[p,u])
-                add_clause(-nodetype[p][3], -value[p][u], -child_value_left[p][u])
-                add_clause(-nodetype[p][3], value[p][u], child_value_left[p][u])
+                # nodetype[p,3] => (value[p,u] <=> ~cvl[p,u])
+                x1 = nodetype[p][3]
+                x2 = value[p][u]
+                x3 = -child_value_left[p][u]
+                add_clause(-x1, -x2, x3)
+                add_clause(-x1, x2, -x3)
 
-        log_debug(f'5. Clauses: {so_far()}', symbol='STAT')
+        log_debug(f'11. Clauses: {so_far()}', symbol='STAT')
 
-        # 6. Root value
+        comment('2. ALO/AMO(nodetype)')
+        for p in closed_range(1, P):
+            ALO(nodetype[p])
+            AMO(nodetype[p])
+
+        log_debug(f'2. Clauses: {so_far()}', symbol='STAT')
+
+        comment('3. Root value')
         for u in closed_range(1, U):
             if self.roots[u]:
                 add_clause(value[1][u])
             else:
                 add_clause(-value[1][u])
 
-        log_debug(f'6. Clauses: {so_far()}', symbol='STAT')
+        log_debug(f'3. Clauses: {so_far()}', symbol='STAT')
 
-        # TODO: 7. Tree constraints
-        #       7.1. Edges
+        # TODO: ?. Tree constraints
+        #       ?.1. Edges
         #       constraint E = sum (p in 1..P) (bool2int(parent[p] != 0));
-        #       7.2. Vertices
+        #       ?.2. Vertices
         #       constraint V = P;
-        #       7.3. Tree equality
+        #       ?.3. Tree equality
         #       constraint E = V - 1;
 
         # =-=-=-=-=
@@ -372,9 +407,9 @@ class MinimizeGuardTask(Task):
         self.reduction = self.Reduction(
             nodetype=nodetype,
             terminal=terminal,
+            parent=parent,
             child_left=child_left,
             child_right=child_right,
-            parent=parent,
             value=value,
             child_value_left=child_value_left,
             child_value_right=child_value_right,
@@ -395,9 +430,9 @@ class MinimizeGuardTask(Task):
         assignment = self.Assignment(
             nodetype=wrapper_int(self.reduction.nodetype),
             terminal=wrapper_int(self.reduction.terminal),
+            parent=wrapper_int(self.reduction.parent),
             child_left=wrapper_int(self.reduction.child_left),
             child_right=wrapper_int(self.reduction.child_right),
-            parent=wrapper_int(self.reduction.parent),
             value=wrapper_bool(self.reduction.value),
             child_value_left=wrapper_bool(self.reduction.child_value_left),
             child_value_right=wrapper_bool(self.reduction.child_value_right),
