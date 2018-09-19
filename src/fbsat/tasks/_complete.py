@@ -223,7 +223,7 @@ class CompleteAutomatonTask(Task):
                 for j in closed_range(1, C):
                     for u in closed_range(1, U):
                         # OR_k( transition[i,e,k,j] & first_fired[i,e,u,k] ) <=> ...
-                        # ... <=> OR_{v|active,tie(v)=e,tin(v)=u}( color[tp[v],i] & color[v,j] )
+                        # ... <=> OR_{v|active,tie(v)=e,tin(v)=u}( color[tp(v),i] & color[v,j] )
                         leftright = new_variable()
 
                         lhs = []
@@ -264,7 +264,7 @@ class CompleteAutomatonTask(Task):
         for i in closed_range(1, C):
             for j in closed_range(1, C):
                 # OR_{e,k}(transition[i,e,k,j]) <=> ...
-                # ... <=> OR_{v|active}( color[tp[v],i] & color[v,j] & output_event[j,toe[v]] )
+                # ... <=> OR_{v|active}( color[tp(v),i] & color[v,j] & output_event[j,toe(v)] )
                 leftright = new_variable()
 
                 lhs = []
@@ -369,7 +369,7 @@ class CompleteAutomatonTask(Task):
 
         log_debug(f'5. Clauses: {so_far()}', symbol='STAT')
 
-        comment('6. Guard conditions constraints')
+        comment('6. Nodetype constraints')
         comment('6.1. ALO/AMO(nodetype)')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
@@ -378,31 +378,10 @@ class CompleteAutomatonTask(Task):
                         ALO(nodetype[c][e][k][p])
                         AMO(nodetype[c][e][k][p])
 
-        comment('6.2. ALO/AMO(terminal)')
-        for c in closed_range(1, C):
-            for e in closed_range(1, E):
-                for k in closed_range(1, K):
-                    for p in closed_range(1, P):
-                        ALO(terminal[c][e][k][p])
-                        AMO(terminal[c][e][k][p])
+        log_debug(f'6. Clauses: {so_far()}', symbol='STAT')
 
-        comment('6.3. ALO/AMO(child_left)')
-        for c in closed_range(1, C):
-            for e in closed_range(1, E):
-                for k in closed_range(1, K):
-                    for p in closed_range(1, P):
-                        ALO(child_left[c][e][k][p])
-                        AMO(child_left[c][e][k][p])
-
-        comment('6.4. ALO/AMO(child_right)')
-        for c in closed_range(1, C):
-            for e in closed_range(1, E):
-                for k in closed_range(1, K):
-                    for p in closed_range(1, P):
-                        ALO(child_right[c][e][k][p])
-                        AMO(child_right[c][e][k][p])
-
-        comment('6.5. ALO/AMO(parent)')
+        comment('7. Parent and children constraints')
+        comment('7.0a. ALO/AMO(parent)')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
@@ -410,23 +389,38 @@ class CompleteAutomatonTask(Task):
                         ALO(parent[c][e][k][p])
                         AMO(parent[c][e][k][p])
 
-        log_debug(f'6. Clauses: {so_far()}', symbol='STAT')
+        comment('7.0b. ALO/AMO(child_left)')
+        for c in closed_range(1, C):
+            for e in closed_range(1, E):
+                for k in closed_range(1, K):
+                    for p in closed_range(1, P):
+                        ALO(child_left[c][e][k][p])
+                        AMO(child_left[c][e][k][p])
 
-        comment('7. Extra guard conditions constraints')
+        comment('7.0c. ALO/AMO(child_right)')
+        for c in closed_range(1, C):
+            for e in closed_range(1, E):
+                for k in closed_range(1, K):
+                    for p in closed_range(1, P):
+                        ALO(child_right[c][e][k][p])
+                        AMO(child_right[c][e][k][p])
+
         comment('7.1. Root has no parent')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
                     add_clause(parent[c][e][k][1][0])
 
-        comment('7.2. BFS: typed nodes (except root) have parent with lesser number')
+        comment('7.2. Typed nodes (except root) have parent with lesser number')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
                     for p in closed_range(2, P):
-                        # nodetype[p] != 4  =>  OR_par(parent[p] = par)
-                        add_clause(nodetype[c][e][k][p][4],
-                                   *[parent[c][e][k][p][par] for par in closed_range(1, p - 1)])
+                        # ~nodetype[p,4]  =>  OR_par(parent[p,par])
+                        rhs = []
+                        for par in closed_range(1, p - 1):
+                            rhs.append(parent[c][e][k][p][par])
+                        add_clause(nodetype[c][e][k][p][4], *rhs)
 
         comment('7.3. parent<->child relation')
         for c in closed_range(1, C):
@@ -434,8 +428,10 @@ class CompleteAutomatonTask(Task):
                 for k in closed_range(1, K):
                     for p in closed_range(1, P - 1):
                         for ch in closed_range(p + 1, P):
-                            # parent[ch]=p => (child_left[p]=ch | child_right[p]=ch)
-                            add_clause(-parent[c][e][k][ch][p], child_left[c][e][k][p][ch], child_right[c][e][k][p][ch])
+                            # parent[ch,p] => (child_left[p,ch] | child_right[p,ch])
+                            add_clause(-parent[c][e][k][ch][p],
+                                       child_left[c][e][k][p][ch],
+                                       child_right[c][e][k][p][ch])
 
         log_debug(f'7. Clauses: {so_far()}', symbol='STAT')
 
@@ -447,22 +443,16 @@ class CompleteAutomatonTask(Task):
                     for p in closed_range(1, P - 1):
                         imply(nodetype[c][e][k][p][4], nodetype[c][e][k][p + 1][4])
 
-        comment('8.2. None-type nodes have no parent')
+        comment('8.2. None-type nodes have no parent and no children')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
                     for p in closed_range(1, P):
                         imply(nodetype[c][e][k][p][4], parent[c][e][k][p][0])
-
-        comment('8.3. None-type nodes have no children')
-        for c in closed_range(1, C):
-            for e in closed_range(1, E):
-                for k in closed_range(1, K):
-                    for p in closed_range(1, P):
                         imply(nodetype[c][e][k][p][4], child_left[c][e][k][p][0])
                         imply(nodetype[c][e][k][p][4], child_right[c][e][k][p][0])
 
-        comment('8.4. None-type nodes have False value and child_values')
+        comment('8.3. None-type nodes have False value and child_values')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
@@ -475,6 +465,14 @@ class CompleteAutomatonTask(Task):
         log_debug(f'8. Clauses: {so_far()}', symbol='STAT')
 
         comment('9. Terminals constraints')
+        comment('9.0. ALO/AMO(terminal)')
+        for c in closed_range(1, C):
+            for e in closed_range(1, E):
+                for k in closed_range(1, K):
+                    for p in closed_range(1, P):
+                        ALO(terminal[c][e][k][p])
+                        AMO(terminal[c][e][k][p])
+
         comment('9.1. Only terminals have associated terminal variables')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
@@ -490,12 +488,22 @@ class CompleteAutomatonTask(Task):
                         imply(nodetype[c][e][k][p][0], child_left[c][e][k][p][0])
                         imply(nodetype[c][e][k][p][0], child_right[c][e][k][p][0])
 
-        comment('9.3. Terminals have value from associated input variable')
+        comment('9.3. Terminal: child_value_left and child_value_right are False')
+        for c in closed_range(1, C):
+            for e in closed_range(1, E):
+                for k in closed_range(1, K):
+                    for p in closed_range(1, P):
+                        for u in closed_range(1, U):
+                            imply(nodetype[c][e][k][p][0], -child_value_left[c][e][k][p][u])
+                            imply(nodetype[c][e][k][p][0], -child_value_right[c][e][k][p][u])
+
+        comment('9.4. Terminals have value from associated input variable')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
                     for p in closed_range(1, P):
                         for x in closed_range(1, X):
+                            # terminal[p,x] -> AND_u( value[p,u] <-> u_x )
                             for u in closed_range(1, U):
                                 if tree.unique_input[u][x]:
                                     imply(terminal[c][e][k][p][x], value[c][e][k][p][u])
@@ -521,10 +529,12 @@ class CompleteAutomatonTask(Task):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
                     for p in closed_range(1, P - 2):
-                        # nodetype[p]=nt => OR_{ch from p+1 to P-1}( child_left[p]=ch )
-                        _cons = [child_left[c][e][k][p][ch] for ch in closed_range(p + 1, P - 1)]
-                        add_clause(-nodetype[c][e][k][p][1], *_cons)
-                        add_clause(-nodetype[c][e][k][p][2], *_cons)
+                        # nodetype[p,1or2] => OR_{ch from p+1 to P-1}( child_left[p,ch] )
+                        rhs = []
+                        for ch in closed_range(p + 1, P - 1):
+                            rhs.append(child_left[c][e][k][p][ch])
+                        add_clause(-nodetype[c][e][k][p][1], *rhs)
+                        add_clause(-nodetype[c][e][k][p][2], *rhs)
 
         comment('10.2. AND/OR: right child is adjacent (+1) to left')
         for c in closed_range(1, C):
@@ -533,7 +543,7 @@ class CompleteAutomatonTask(Task):
                     for p in closed_range(1, P - 2):
                         for ch in closed_range(p + 1, P - 1):
                             for nt in [1, 2]:
-                                # (nodetype[p]=nt & child_left[p]=ch) => child_right[p]=ch+1
+                                # (nodetype[p,1or2] & child_left[p,ch]) => child_right[p,ch+1]
                                 add_clause(-nodetype[c][e][k][p][nt],
                                            -child_left[c][e][k][p][ch],
                                            child_right[c][e][k][p][ch + 1])
@@ -545,10 +555,13 @@ class CompleteAutomatonTask(Task):
                     for p in closed_range(1, P - 2):
                         for ch in closed_range(p + 1, P - 1):
                             for nt in [1, 2]:
-                                # (nodetype[p]=nt & child_left[p]=ch) => (parent[ch]=p & parent[ch+1]=p)
-                                _cons = [-nodetype[c][e][k][p][nt], -child_left[c][e][k][p][ch]]
-                                add_clause(*_cons, parent[c][e][k][ch][p])
-                                add_clause(*_cons, parent[c][e][k][ch + 1][p])
+                                # (nodetype[p,1or2] & child_left[p,ch]) => (parent[ch,p] & parent[ch+1,p])
+                                x1 = nodetype[c][e][k][p][nt]
+                                x2 = child_left[c][e][k][p][ch]
+                                x3 = parent[c][e][k][ch][p]
+                                x4 = parent[c][e][k][ch + 1][p]
+                                add_clause(-x1, -x2, x3)
+                                add_clause(-x1, -x2, x4)
 
         comment('10.4a. AND/OR: child_value_left is a value of left child')
         for c in closed_range(1, C):
@@ -558,7 +571,7 @@ class CompleteAutomatonTask(Task):
                         for ch in closed_range(p + 1, P - 1):
                             for u in closed_range(1, U):
                                 for nt in [1, 2]:
-                                    # (nodetype[p]=nt & child_left[p]=ch) => (child_value_left[p,u] <=> value[ch,u])
+                                    # (nodetype[p,1or2] & child_left[p,ch]) => (child_value_left[p,u] <=> value[ch,u])
                                     x1 = nodetype[c][e][k][p][nt]
                                     x2 = child_left[c][e][k][p][ch]
                                     x3 = child_value_left[c][e][k][p][u]
@@ -574,7 +587,7 @@ class CompleteAutomatonTask(Task):
                         for ch in closed_range(p + 2, P):
                             for u in closed_range(1, U):
                                 for nt in [1, 2]:
-                                    # (nodetype[p]=nt & child_right[p]=ch) => (child_value_right[p,u] <=> value[ch,u])
+                                    # (nodetype[p,1or2] & child_right[p,ch]) => (child_value_right[p,u] <=> value[ch,u])
                                     x1 = nodetype[c][e][k][p][nt]
                                     x2 = child_right[c][e][k][p][ch]
                                     x3 = child_value_right[c][e][k][p][u]
@@ -588,7 +601,7 @@ class CompleteAutomatonTask(Task):
                 for k in closed_range(1, K):
                     for p in closed_range(1, P - 2):
                         for u in closed_range(1, U):
-                            # nodetype[p]=1 => (value[p,u] <=> cvl[p,u] & cvr[p,u])
+                            # nodetype[p,1] => (value[p,u] <=> cvl[p,u] & cvr[p,u])
                             x1 = nodetype[c][e][k][p][1]
                             x2 = value[c][e][k][p][u]
                             x3 = child_value_left[c][e][k][p][u]
@@ -603,7 +616,7 @@ class CompleteAutomatonTask(Task):
                 for k in closed_range(1, K):
                     for p in closed_range(1, P - 2):
                         for u in closed_range(1, U):
-                            # nodetype[p]=2 => (value[p,u] <=> cvl[p,u] | cvr[p,u])
+                            # nodetype[p,2] => (value[p,u] <=> cvl[p,u] | cvr[p,u])
                             x1 = nodetype[c][e][k][p][2]
                             x2 = value[c][e][k][p][u]
                             x3 = child_value_left[c][e][k][p][u]
@@ -626,18 +639,13 @@ class CompleteAutomatonTask(Task):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
                     for p in closed_range(1, P - 1):
-                        # nodetype[p]=3 => OR_ch(child_left[p]=ch)
-                        _cons = [child_left[c][e][k][p][ch] for ch in closed_range(p + 1, P)]
-                        add_clause(-nodetype[c][e][k][p][3], *_cons)
+                        # nodetype[p,3] => OR_ch(child_left[p,ch])
+                        rhs = []
+                        for ch in closed_range(p + 1, P):
+                            rhs.append(child_left[c][e][k][p][ch])
+                        add_clause(-nodetype[c][e][k][p][3], *rhs)
 
-        comment('11.2. NOT: no right child')
-        for c in closed_range(1, C):
-            for e in closed_range(1, E):
-                for k in closed_range(1, K):
-                    for p in closed_range(1, P - 1):
-                        imply(nodetype[c][e][k][p][3], child_right[c][e][k][p][0])
-
-        comment('11.3. NOT: child`s parents')
+        comment('11.2. NOT: child`s parents')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
@@ -648,6 +656,13 @@ class CompleteAutomatonTask(Task):
                                        -child_left[c][e][k][p][ch],
                                        parent[c][e][k][ch][p])
 
+        comment('11.3. NOT: no right child')
+        for c in closed_range(1, C):
+            for e in closed_range(1, E):
+                for k in closed_range(1, K):
+                    for p in closed_range(1, P - 1):
+                        imply(nodetype[c][e][k][p][3], child_right[c][e][k][p][0])
+
         comment('11.4a. NOT: child_value_left is a value of left child')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
@@ -655,7 +670,7 @@ class CompleteAutomatonTask(Task):
                     for p in closed_range(1, P - 1):
                         for ch in closed_range(p + 1, P):
                             for u in closed_range(1, U):
-                                # (nodetype[p]=3 & child_left[p]=ch) => (value[ch,u] <=> cvl[p,u])
+                                # (nodetype[p,3] & child_left[p,ch]) => (cvl[p,u] <=> value[ch,u])
                                 x1 = nodetype[c][e][k][p][3]
                                 x2 = child_left[c][e][k][p][ch]
                                 x3 = value[c][e][k][ch][u]
@@ -677,7 +692,7 @@ class CompleteAutomatonTask(Task):
                 for k in closed_range(1, K):
                     for p in closed_range(1, P - 1):
                         for u in closed_range(1, U):
-                            # nodetype[p]=3 => (value[p,u] <=> ~cvl[p,u])
+                            # nodetype[p,3] => (value[p,u] <=> ~cvl[p,u])
                             x1 = nodetype[c][e][k][p][3]
                             x2 = value[c][e][k][p][u]
                             x3 = -child_value_left[c][e][k][p][u]
@@ -744,9 +759,9 @@ class CompleteAutomatonTask(Task):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
                     for u in closed_range(1, U):
-                        # (t!=0 & nf) => nodetype[1]!=4
+                        # (t!=0 & nf) => ~nodetype[1,4]
                         add_clause(transition[c][e][k][0], -not_fired[c][e][u][k], -nodetype[c][e][k][1][4])
-                        # ff => nodetype[1]!=4
+                        # ff => ~nodetype[1,4]
                         imply(first_fired[c][e][u][k], -nodetype[c][e][k][1][4])
 
         comment('A.4a. Forbid double negation')
@@ -755,7 +770,7 @@ class CompleteAutomatonTask(Task):
                 for k in closed_range(1, K):
                     for p in closed_range(1, P - 1):
                         for ch in closed_range(p + 1, P):
-                            # (nodetype[p]=3 & child_left[p]=ch) => nodetype[ch]!=3
+                            # (nodetype[p,3] & child_left[p,ch]) => ~nodetype[ch,3]
                             add_clause(-nodetype[c][e][k][p][3],
                                        -child_left[c][e][k][p][ch],
                                        -nodetype[c][e][k][ch][3])
@@ -765,7 +780,7 @@ class CompleteAutomatonTask(Task):
         #         for k in closed_range(1, K):
         #             for p in closed_range(1, P - 1):
         #                 for ch in closed_range(p + 1, P):
-        #                     # (nodetype[p]=3 & child_left[p]=ch) => nodetype[ch]=0
+        #                     # (nodetype[p,3] & child_left[p,ch]) => nodetype[ch,0]
         #                     add_clause(-nodetype[c][e][k][p][3],
         #                                -child_left[c][e][k][p][ch],
         #                                nodetype[c][e][k][ch][0])
