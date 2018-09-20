@@ -9,6 +9,7 @@ from io import StringIO
 from lxml import etree
 
 from .printers import *
+from .scenario import OutputAction, Scenario
 from .utils import *
 
 __all__ = ['FullGuard', 'ParseTreeGuard', 'TruthTableGuard', 'EFSM']
@@ -619,6 +620,32 @@ class EFSM:
     def get_suitable_transition_and_index(self, src, input_event, input_values):
         source = self.states[src]
         return source.get_suitable_transition_and_index(input_event, input_values)
+
+    def random_walk(self, n, *, X, Z, input_events, preprocess=False):
+        scenario = Scenario()
+        current_state = self.initial_state
+        current_values = '0' * Z
+
+        for _ in range(n):
+            input_event = random.choice(input_events)
+            input_values = ''.join(random.choice('01') for _ in range(X))
+            transition, k = self.get_suitable_transition_and_index(current_state, input_event, input_values)  # Note: k is 1-based, 0 if no transition
+
+            if k == 0:
+                scenario.add_element(input_event, input_values, [OutputAction(None, current_values)])
+            else:
+                destination = transition.destination  # :: State
+                output_event = destination.output_event
+                new_state = destination.id
+                new_values = destination.eval(current_values)
+                current_state = new_state
+                current_values = new_values
+                scenario.add_element(input_event, input_values, [OutputAction(output_event, new_values)])
+
+        if preprocess:
+            scenario = Scenario.proprocess(scenario)
+
+        return scenario
 
     def pprint(self):
         for state in self.states.values():
