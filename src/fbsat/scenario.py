@@ -76,15 +76,6 @@ class Scenario:
     def add_element(self, input_event, input_values, output_actions):
         self.elements.append(ScenarioElement(input_event, input_values, output_actions))
 
-    @classmethod
-    def preprocess(cls, scenario):
-        processed = cls()  # new Scenario
-        processed.elements.append(scenario.elements[0])
-        for elem in scenario.elements[1:]:
-            if elem.output_event is not None or elem != processed.elements[-1]:
-                processed.elements.append(elem)
-        return processed
-
     def __len__(self):
         return len(self.elements)
 
@@ -132,6 +123,15 @@ class Scenario:
 
         log_debug(f'Done reading {len(scenarios)} scenarios with total {sum(map(len, scenarios))} elements in {time.time() - time_start_reading:.2f} s')
         return scenarios
+
+    @classmethod
+    def preprocess(cls, scenario):
+        processed = cls()  # new Scenario
+        processed.elements.append(scenario.elements[0])
+        for elem in scenario.elements[1:]:
+            if elem.output_event is not None or elem != processed.elements[-1]:
+                processed.elements.append(elem)
+        return processed
 
     @staticmethod
     def preprocess_scenarios(scenarios_full):

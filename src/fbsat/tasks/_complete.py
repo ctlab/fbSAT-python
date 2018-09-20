@@ -738,23 +738,13 @@ class CompleteAutomatonTask(Task):
             log_debug(f'12. Clauses: {so_far()}', symbol='STAT')
 
         comment('A. AD-HOCs')
-        comment('A.1. Distinct transitions')
-        if self.is_distinct:
-            for i in closed_range(1, C):
-                for e in closed_range(1, E):
-                    for k in closed_range(1, K):
-                        # transition[i,e,k,j] => AND_{k_!=k}(~transition[i,e,k_,j])
-                        for j in closed_range(1, C):
-                            for k_ in closed_range(k + 1, K):
-                                imply(transition[i][e][k][j], -transition[i][e][k_][j])
-
-        comment('A.2. (comb)')
+        comment('A.1. (comb)')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
                     iff(transition[c][e][k][0], nodetype[c][e][k][1][4])
 
-        comment('A.3. (comb)')
+        comment('A.2. (comb)')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
@@ -763,6 +753,16 @@ class CompleteAutomatonTask(Task):
                         add_clause(transition[c][e][k][0], -not_fired[c][e][u][k], -nodetype[c][e][k][1][4])
                         # ff => ~nodetype[1,4]
                         imply(first_fired[c][e][u][k], -nodetype[c][e][k][1][4])
+
+        comment('A.3. Distinct transitions')
+        if self.is_distinct:
+            for i in closed_range(1, C):
+                for e in closed_range(1, E):
+                    for k in closed_range(1, K):
+                        # transition[i,e,k,j] => AND_{k_!=k}(~transition[i,e,k_,j])
+                        for j in closed_range(1, C):
+                            for k_ in closed_range(k + 1, K):
+                                imply(transition[i][e][k][j], -transition[i][e][k_][j])
 
         comment('A.4a. Forbid double negation')
         for c in closed_range(1, C):
