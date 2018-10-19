@@ -606,6 +606,12 @@ class EFSM:
                        for transition in state.transitions)
                    for state in self.states.values())
 
+    @property
+    def guard_condition_maxsize(self):
+        return max(transition.guard.size()
+                   for state in self.states.values()
+                   for transition in state.transitions)
+
     def add_state(self, id, output_event, algorithm_0, algorithm_1):
         self.states[id] = self.State(id, output_event, algorithm_0, algorithm_1)
 
