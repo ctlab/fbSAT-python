@@ -5,6 +5,7 @@ from ._partial import PartialAutomatonTask
 from ._partial_minimal import MinimalPartialAutomatonTask
 from ._complete import CompleteAutomatonTask
 from ._complete_minimal import MinimalCompleteAutomatonTask
+from ._complete_minimal_ub import MinimalCompleteUBAutomatonTask
 from ._minimize import MinimizeGuardTask
 from ._minimize_all import MinimizeAllGuardsTask
 

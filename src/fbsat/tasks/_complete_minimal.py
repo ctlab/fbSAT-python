@@ -10,7 +10,7 @@ __all__ = ['MinimalCompleteAutomatonTask']
 
 class MinimalCompleteAutomatonTask(Task):
 
-    def __init__(self, scenario_tree, *, C=None, K=None, P=None, N=None, use_bfs=True, is_distinct=False, is_forbid_or=False, solver_cmd=None, is_incremental=False, is_filesolver=False, outdir=''):
+    def __init__(self, scenario_tree, *, C=None, K=None, P, N=None, use_bfs=True, is_distinct=False, is_forbid_or=False, solver_cmd=None, is_incremental=False, is_filesolver=False, outdir=''):
         self.scenario_tree = scenario_tree
         self.C = C
         self.K = K
@@ -24,6 +24,7 @@ class MinimalCompleteAutomatonTask(Task):
                                               is_filesolver=is_filesolver,
                                               outdir=outdir)
         self.subtask_config_complete = dict(**self.subtask_config_minpartial,
+                                            P=self.P,
                                             is_distinct=is_distinct,
                                             is_forbid_or=is_forbid_or)
 
@@ -35,14 +36,6 @@ class MinimalCompleteAutomatonTask(Task):
 
     def get_filename_prefix(self, C, K, P, N=None):
         return os.path.join(self.outdir, self.get_stem(C, K, P, N))
-
-    @property
-    def number_of_variables(self):
-        return self.solver.number_of_variables
-
-    @property
-    def number_of_clauses(self):
-        return self.solver.number_of_clauses
 
     def run(self, *, fast=False):
         log_debug(f'MinimalCompleteAutomatonTask: running...')
@@ -66,35 +59,18 @@ class MinimalCompleteAutomatonTask(Task):
             K = self.K
             log_debug(f'MinimalCompleteAutomatonTask: using specified K={K}')
 
-        if self.P is None:
-            log_debug('MinimalCompleteAutomatonTask: searching for P...')
-            for P in [1, 3, 5, 7, 10, 15]:
-                log_br()
-                log_info(f'Trying P={P}...')
-                task = CompleteAutomatonTask(C=C, K=K, P=P, **self.subtask_config_complete)
-                assignment = task.run(self.N_init, fast=True, finalize=False)
+        task = CompleteAutomatonTask(C=C, K=K, **self.subtask_config_complete)
+        assignment = task.run(self.N_init, fast=True, finalize=False)
 
-                if assignment:
-                    log_success(f'MinimalCompleteAutomatonTask: found P={P}')
-                    break
-                else:
-                    task.finalize()
-            else:
-                log_error('MinimalCompleteAutomatonTask: P was not found')
-        else:
-            P = self.P
-            log_br()
-            log_info(f'MinimalCompleteAutomatonTask: pre-solving for specified P={P}...')
-            task = CompleteAutomatonTask(C=C, K=K, P=P, **self.subtask_config_complete)
-            assignment = task.run(self.N_init, fast=True, finalize=False)
-            if assignment:
-                log_success(f'MinimalCompleteAutomatonTask: pre-solved for P={P}')
-                # TODO: show presolved semi-minimal automaton
-            else:
-                log_error(f'MinimalCompleteAutomatonTask: no solution for P={P}')
-
+        # ====================
+        # self.intermediate = []
+        # ====================
         while assignment:
             best = assignment
+            # ============================
+            # _best_automaton = self.build_efsm(best, dump=False)
+            # self.intermediate.append(_best_automaton)
+            # ============================
             N = best.N - 1
             log_br()
             log_info(f'Trying N = {N}...')

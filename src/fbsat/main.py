@@ -29,7 +29,7 @@ CONTEXT_SETTINGS = dict(
                                                'old-combined', 'old-combined2', 'old-combined3',
                                                'full', 'full-min',
                                                'partial', 'partial-min',
-                                               'complete', 'complete-min',
+                                               'complete', 'complete-min', 'complete-min-ub',
                                                'minimize']))
 @click.option('-i', '--scenarios', 'filename_scenarios', metavar='<path/->', required=True,
               type=click.Path(exists=True, allow_dash=True),
@@ -63,6 +63,8 @@ CONTEXT_SETTINGS = dict(
               help='Upper bound on total number of transitions')
 @click.option('-Cmax', 'Cmax', type=int, metavar='<int>',
               help='[old-basic] C_max')
+@click.option('-w', 'w', type=int, metavar='<int>',
+              help='[complete-min-ub] Maximum width of local minima')
 @click.option('--min', 'is_minimize', is_flag=True,
               help='[old] Do minimize')
 @click.option('--incremental', 'is_incremental', is_flag=True,
@@ -98,7 +100,7 @@ CONTEXT_SETTINGS = dict(
 @click.option('--automaton', help='File with pickled automaton')
 @click.version_option(__version__)
 def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_variable_names,
-        filename_prefix, outdir, C, K, P, N, T, Cmax, is_minimize, is_incremental, is_filesolver,
+        filename_prefix, outdir, C, K, P, N, T, Cmax, w, is_minimize, is_incremental, is_filesolver,
         is_reuse, use_bfs, is_distinct, is_forbid_or, sat_solver, sat_isolver, mzn_solver,
         write_strategy, automaton):
     log_info('Welcome!')
@@ -321,6 +323,26 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
                       is_filesolver=is_filesolver,
                       outdir=outdir)
         task = MinimalCompleteAutomatonTask(**config)
+        minimal_complete_automaton = task.run()  # noqa
+
+    elif strategy == 'complete-min-ub':
+        log_info('MinimalCompleteUB strategy')
+        if P is not None:
+            log_warn(f'Ignoring specified P={P}')
+        if N is not None:
+            log_warn(f'Ignoring specified N={N}')
+        if T is not None:
+            log_warn(f'Ignoring specified T={T}')
+        config = dict(scenario_tree=scenario_tree,
+                      C=C, K=K, w=w,
+                      use_bfs=use_bfs,
+                      is_distinct=is_distinct,
+                      is_forbid_or=is_forbid_or,
+                      solver_cmd=sat_solver,
+                      is_incremental=is_incremental,
+                      is_filesolver=is_filesolver,
+                      outdir=outdir)
+        task = MinimalCompleteUBAutomatonTask(**config)
         minimal_complete_automaton = task.run()  # noqa
 
     elif strategy == 'minimize':
