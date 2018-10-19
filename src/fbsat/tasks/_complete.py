@@ -251,16 +251,77 @@ class CompleteAutomatonTask(Task):
 
         log_debug(f'2. Clauses: {so_far()}', symbol='STAT')
 
-        comment('3. Output event constraints')
-        comment('3.0. ALO/AMO(output_event)')
+        comment('3. Firing constraints')
+        comment('3.0. only AMO(first_fired)')
+        for c in closed_range(1, C):
+            for e in closed_range(1, E):
+                for u in closed_range(1, U):
+                    AMO(first_fired[c][e][u])
+
+        comment('3.1. (not_fired definition)')
+        for c in closed_range(1, C):
+            for e in closed_range(1, E):
+                for u in closed_range(1, U):
+                    # not_fired[c,e,u,K] <=> OR_{v|passive,tie(v)=e,tin(v)=u}(color[v,c])
+                    rhs = []
+                    for v in tree.V_passive_eu[e][u]:
+                        rhs.append(color[v][c])  # passive: color[v] == color[tp(v)] == color[tpa(v)]
+                    iff_or(not_fired[c][e][u][K], rhs)
+
+        comment('3.2. not_fired extension')
+        for c in closed_range(1, C):
+            for e in closed_range(1, E):
+                for u in closed_range(1, U):
+                    for k in closed_range(2, K):
+                        # nf_k => nf_{k-1}
+                        imply(not_fired[c][e][u][k], not_fired[c][e][u][k - 1])
+                    for k in closed_range(1, K - 1):
+                        # ~nf_k => ~nf_{k+1}
+                        imply(-not_fired[c][e][u][k], -not_fired[c][e][u][k + 1])
+
+                    # Trial: (AND_k(~ff_k) & ~nf_K) => ~nf_1
+                    # aux = new_variable()
+                    # rhs = []
+                    # for k in closed_range(1, K):
+                    #     rhs.append(-first_fired[c][e][u][k])
+                    # rhs.append(-not_fired[c][e][u][K])
+                    # iff_and(aux, rhs)
+                    # imply(aux, -not_fired[c][e][u][1])
+
+        comment('3.3. first_fired and not_fired interaction')
+        for c in closed_range(1, C):
+            for e in closed_range(1, E):
+                for u in closed_range(1, U):
+                    for k in closed_range(1, K):
+                        # ~(ff & nf)
+                        add_clause(-first_fired[c][e][u][k], -not_fired[c][e][u][k])
+                    for k in closed_range(2, K):
+                        # ff_k => nf_{k-1}
+                        imply(first_fired[c][e][u][k], not_fired[c][e][u][k - 1])
+
+        comment('3.4. Value from fired')
+        for c in closed_range(1, C):
+            for e in closed_range(1, E):
+                for u in closed_range(1, U):
+                    for k in closed_range(1, K):
+                        # nf => ~root_value
+                        imply(not_fired[c][e][u][k], -value[c][e][k][1][u])
+                        # ff => root_value
+                        imply(first_fired[c][e][u][k], value[c][e][k][1][u])
+                        # else => unconstrained
+
+        log_debug(f'3. Clauses: {so_far()}', symbol='STAT')
+
+        comment('4. Output event constraints')
+        comment('4.0. ALO/AMO(output_event)')
         for c in closed_range(1, C):
             ALO(output_event[c])
             AMO(output_event[c])
 
-        comment('3.1. Start state does INITO (root`s output event)')
+        comment('4.1. Start state does INITO (root`s output event)')
         add_clause(output_event[1][tree.output_event[1]])
 
-        comment('3.2. Output event is the same as in the tree')
+        comment('4.2. Output event is the same as in the tree')
         for i in closed_range(1, C):
             for j in closed_range(1, C):
                 # OR_{e,k}(transition[i,e,k,j]) <=> ...
@@ -283,15 +344,15 @@ class CompleteAutomatonTask(Task):
                     rhs.append(aux)
                 iff_or(leftright, rhs)
 
-        log_debug(f'3. Clauses: {so_far()}', symbol='STAT')
+        log_debug(f'4. Clauses: {so_far()}', symbol='STAT')
 
-        comment('4. Algorithm constraints')
-        comment('4.1. Start state does nothing')
+        comment('5. Algorithm constraints')
+        comment('5.1. Start state does nothing')
         for z in closed_range(1, Z):
             add_clause(-algorithm_0[1][z])
             add_clause(algorithm_1[1][z])
 
-        comment('4.2. Algorithms definition')
+        comment('5.2. Algorithms definition')
         for v in tree.V_active:
             for z in closed_range(1, Z):
                 old = tree.output_value[tree.parent[v]][z]  # parent/tpa, no difference
@@ -306,71 +367,46 @@ class CompleteAutomatonTask(Task):
                     elif (old, new) == (True, True):
                         imply(color[v][c], algorithm_1[c][z])
 
-        log_debug(f'4. Clauses: {so_far()}', symbol='STAT')
-
-        comment('5. Firing constraints')
-        comment('5.0. only AMO(first_fired)')
-        for c in closed_range(1, C):
-            for e in closed_range(1, E):
-                for u in closed_range(1, U):
-                    AMO(first_fired[c][e][u])
-
-        comment('5.1. (not_fired definition)')
-        for c in closed_range(1, C):
-            for e in closed_range(1, E):
-                for u in closed_range(1, U):
-                    # not_fired[c,e,u,K] <=> OR_{v|passive,tie(v)=e,tin(v)=u}(color[v,c])
-                    rhs = []
-                    for v in tree.V_passive_eu[e][u]:
-                        rhs.append(color[v][c])  # passive: color[v] == color[tp(v)] == color[tpa(v)]
-                    iff_or(not_fired[c][e][u][K], rhs)
-
-        comment('5.2. not_fired extension')
-        for c in closed_range(1, C):
-            for e in closed_range(1, E):
-                for u in closed_range(1, U):
-                    for k in closed_range(2, K):
-                        # nf_k => nf_{k-1}
-                        imply(not_fired[c][e][u][k], not_fired[c][e][u][k - 1])
-                    for k in closed_range(1, K - 1):
-                        # ~nf_k => ~nf_{k+1}
-                        imply(-not_fired[c][e][u][k], -not_fired[c][e][u][k + 1])
-
-                    # Trial: (AND_k(~ff_k) & ~nf_K) => ~nf_1
-                    # aux = new_variable()
-                    # rhs = []
-                    # for k in closed_range(1, K):
-                    #     rhs.append(-first_fired[c][e][u][k])
-                    # rhs.append(-not_fired[c][e][u][K])
-                    # iff_and(aux, rhs)
-                    # imply(aux, -not_fired[c][e][u][1])
-
-        comment('5.3. first_fired and not_fired interaction')
-        for c in closed_range(1, C):
-            for e in closed_range(1, E):
-                for u in closed_range(1, U):
-                    for k in closed_range(1, K):
-                        # ~(ff & nf)
-                        add_clause(-first_fired[c][e][u][k], -not_fired[c][e][u][k])
-                    for k in closed_range(2, K):
-                        # ff_k => nf_{k-1}
-                        imply(first_fired[c][e][u][k], not_fired[c][e][u][k - 1])
-
-        comment('5.4. Value from fired')
-        for c in closed_range(1, C):
-            for e in closed_range(1, E):
-                for u in closed_range(1, U):
-                    for k in closed_range(1, K):
-                        # nf => ~root_value
-                        imply(not_fired[c][e][u][k], -value[c][e][k][1][u])
-                        # ff => root_value
-                        imply(first_fired[c][e][u][k], value[c][e][k][1][u])
-                        # else => unconstrained
-
         log_debug(f'5. Clauses: {so_far()}', symbol='STAT')
 
-        comment('6. Nodetype constraints')
-        comment('6.1. ALO/AMO(nodetype)')
+        if self.use_bfs:
+            comment('6. BFS constraints')
+            comment('6.1. F_t')
+            for i in closed_range(1, C):
+                for j in closed_range(1, C):
+                    # t_ij <=> OR_{e,k}(transition_iekj)
+                    rhs = []
+                    for e in closed_range(1, E):
+                        for k in closed_range(1, K):
+                            rhs.append(transition[i][e][k][j])
+                    iff_or(bfs_transition[i][j], rhs)
+
+            comment('6.2. F_p')
+            for i in closed_range(1, C):
+                for j in closed_range(1, i):  # to avoid ambiguous unused variable
+                    add_clause(-bfs_parent[j][i])
+                for j in closed_range(i + 1, C):
+                    # p_ji <=> t_ij & AND_[k<i](~t_kj)
+                    rhs = [bfs_transition[i][j]]
+                    for k in closed_range(1, i - 1):
+                        rhs.append(-bfs_transition[k][j])
+                    iff_and(bfs_parent[j][i], rhs)
+
+            comment('6.3. F_ALO(p)')
+            for j in closed_range(2, C):
+                add_clause(*[bfs_parent[j][i] for i in closed_range(1, j - 1)])
+
+            comment('6.4. F_BFS(p)')
+            for k in closed_range(1, C):
+                for i in closed_range(k + 1, C):
+                    for j in closed_range(i + 1, C - 1):
+                        # p_ji => ~p_{j+1,k}
+                        imply(bfs_parent[j][i], -bfs_parent[j + 1][k])
+
+            log_debug(f'6. Clauses: {so_far()}', symbol='STAT')
+
+        comment('7. Nodetype constraints')
+        comment('7.1. ALO/AMO(nodetype)')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
@@ -378,10 +414,10 @@ class CompleteAutomatonTask(Task):
                         ALO(nodetype[c][e][k][p])
                         AMO(nodetype[c][e][k][p])
 
-        log_debug(f'6. Clauses: {so_far()}', symbol='STAT')
+        log_debug(f'7. Clauses: {so_far()}', symbol='STAT')
 
-        comment('7. Parent and children constraints')
-        comment('7.0a. ALO/AMO(parent)')
+        comment('8. Parent and children constraints')
+        comment('8.0a. ALO/AMO(parent)')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
@@ -389,7 +425,7 @@ class CompleteAutomatonTask(Task):
                         ALO(parent[c][e][k][p])
                         AMO(parent[c][e][k][p])
 
-        comment('7.0b. ALO/AMO(child_left)')
+        comment('8.0b. ALO/AMO(child_left)')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
@@ -397,7 +433,7 @@ class CompleteAutomatonTask(Task):
                         ALO(child_left[c][e][k][p])
                         AMO(child_left[c][e][k][p])
 
-        comment('7.0c. ALO/AMO(child_right)')
+        comment('8.0c. ALO/AMO(child_right)')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
@@ -405,13 +441,13 @@ class CompleteAutomatonTask(Task):
                         ALO(child_right[c][e][k][p])
                         AMO(child_right[c][e][k][p])
 
-        comment('7.1. Root has no parent')
+        comment('8.1. Root has no parent')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
                     add_clause(parent[c][e][k][1][0])
 
-        comment('7.2. Typed nodes (except root) have parent with lesser number')
+        comment('8.2. Typed nodes (except root) have parent with lesser number')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
@@ -422,7 +458,7 @@ class CompleteAutomatonTask(Task):
                             rhs.append(parent[c][e][k][p][par])
                         add_clause(nodetype[c][e][k][p][4], *rhs)
 
-        comment('7.3. parent<->child relation')
+        comment('8.3. parent<->child relation')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
@@ -433,17 +469,17 @@ class CompleteAutomatonTask(Task):
                                        child_left[c][e][k][p][ch],
                                        child_right[c][e][k][p][ch])
 
-        log_debug(f'7. Clauses: {so_far()}', symbol='STAT')
+        log_debug(f'8. Clauses: {so_far()}', symbol='STAT')
 
-        comment('8. None-type nodes constraints')
-        comment('8.1. None-type nodes have largest numbers')
+        comment('9. None-type nodes constraints')
+        comment('9.1. None-type nodes have largest numbers')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
                     for p in closed_range(1, P - 1):
                         imply(nodetype[c][e][k][p][4], nodetype[c][e][k][p + 1][4])
 
-        comment('8.2. None-type nodes have no parent and no children')
+        comment('9.2. None-type nodes have no parent and no children')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
@@ -452,7 +488,7 @@ class CompleteAutomatonTask(Task):
                         imply(nodetype[c][e][k][p][4], child_left[c][e][k][p][0])
                         imply(nodetype[c][e][k][p][4], child_right[c][e][k][p][0])
 
-        comment('8.3. None-type nodes have False value and child_values')
+        comment('9.3. None-type nodes have False value and child_values')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
@@ -462,10 +498,10 @@ class CompleteAutomatonTask(Task):
                             imply(nodetype[c][e][k][p][4], -child_value_left[c][e][k][p][u])
                             imply(nodetype[c][e][k][p][4], -child_value_right[c][e][k][p][u])
 
-        log_debug(f'8. Clauses: {so_far()}', symbol='STAT')
+        log_debug(f'9. Clauses: {so_far()}', symbol='STAT')
 
-        comment('9. Terminals constraints')
-        comment('9.0. ALO/AMO(terminal)')
+        comment('10. Terminals constraints')
+        comment('10.0. ALO/AMO(terminal)')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
@@ -473,14 +509,14 @@ class CompleteAutomatonTask(Task):
                         ALO(terminal[c][e][k][p])
                         AMO(terminal[c][e][k][p])
 
-        comment('9.1. Only terminals have associated terminal variables')
+        comment('10.1. Only terminals have associated terminal variables')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
                     for p in closed_range(1, P):
                         iff(nodetype[c][e][k][p][0], -terminal[c][e][k][p][0])
 
-        comment('9.2. Terminals have no children')
+        comment('10.2. Terminals have no children')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
@@ -488,7 +524,7 @@ class CompleteAutomatonTask(Task):
                         imply(nodetype[c][e][k][p][0], child_left[c][e][k][p][0])
                         imply(nodetype[c][e][k][p][0], child_right[c][e][k][p][0])
 
-        comment('9.3. Terminal: child_value_left and child_value_right are False')
+        comment('10.3. Terminal: child_value_left and child_value_right are False')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
@@ -497,7 +533,7 @@ class CompleteAutomatonTask(Task):
                             imply(nodetype[c][e][k][p][0], -child_value_left[c][e][k][p][u])
                             imply(nodetype[c][e][k][p][0], -child_value_right[c][e][k][p][u])
 
-        comment('9.4. Terminals have value from associated input variable')
+        comment('10.4. Terminals have value from associated input variable')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
@@ -510,10 +546,10 @@ class CompleteAutomatonTask(Task):
                                 else:
                                     imply(terminal[c][e][k][p][x], -value[c][e][k][p][u])
 
-        log_debug(f'9. Clauses: {so_far()}', symbol='STAT')
+        log_debug(f'10. Clauses: {so_far()}', symbol='STAT')
 
-        comment('10. AND/OR nodes constraints')
-        comment('10.0. AND/OR nodes cannot have numbers P-1 or P')
+        comment('11. AND/OR nodes constraints')
+        comment('11.0. AND/OR nodes cannot have numbers P-1 or P')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
@@ -524,7 +560,7 @@ class CompleteAutomatonTask(Task):
                         add_clause(-nodetype[c][e][k][P - 1][1])
                         add_clause(-nodetype[c][e][k][P - 1][2])
 
-        comment('10.1. AND/OR: left child has greater number')
+        comment('11.1. AND/OR: left child has greater number')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
@@ -536,7 +572,7 @@ class CompleteAutomatonTask(Task):
                         add_clause(-nodetype[c][e][k][p][1], *rhs)
                         add_clause(-nodetype[c][e][k][p][2], *rhs)
 
-        comment('10.2. AND/OR: right child is adjacent (+1) to left')
+        comment('11.2. AND/OR: right child is adjacent (+1) to left')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
@@ -548,7 +584,7 @@ class CompleteAutomatonTask(Task):
                                            -child_left[c][e][k][p][ch],
                                            child_right[c][e][k][p][ch + 1])
 
-        comment('10.3. AND/OR: children`s parents')
+        comment('11.3. AND/OR: children`s parents')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
@@ -563,7 +599,7 @@ class CompleteAutomatonTask(Task):
                                 add_clause(-x1, -x2, x3)
                                 add_clause(-x1, -x2, x4)
 
-        comment('10.4a. AND/OR: child_value_left is a value of left child')
+        comment('11.4a. AND/OR: child_value_left is a value of left child')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
@@ -579,7 +615,7 @@ class CompleteAutomatonTask(Task):
                                     add_clause(-x1, -x2, -x3, x4)
                                     add_clause(-x1, -x2, x3, -x4)
 
-        comment('10.4b. AND/OR: child_value_right is a value of right child')
+        comment('11.4b. AND/OR: child_value_right is a value of right child')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
@@ -595,7 +631,7 @@ class CompleteAutomatonTask(Task):
                                     add_clause(-x1, -x2, -x3, x4)
                                     add_clause(-x1, -x2, x3, -x4)
 
-        comment('10.5a. AND: value is calculated as a conjunction of children')
+        comment('11.5a. AND: value is calculated as a conjunction of children')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
@@ -610,7 +646,7 @@ class CompleteAutomatonTask(Task):
                             add_clause(-x1, -x2, x3)
                             add_clause(-x1, -x2, x4)
 
-        comment('10.5b. OR: value is calculated as a disjunction of children')
+        comment('11.5b. OR: value is calculated as a disjunction of children')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
@@ -625,16 +661,16 @@ class CompleteAutomatonTask(Task):
                             add_clause(-x1, x2, -x3)
                             add_clause(-x1, x2, -x4)
 
-        log_debug(f'10. Clauses: {so_far()}', symbol='STAT')
+        log_debug(f'11. Clauses: {so_far()}', symbol='STAT')
 
-        comment('11. NOT nodes constraints')
-        comment('11.0. NOT nodes cannot have number P')
+        comment('12. NOT nodes constraints')
+        comment('12.0. NOT nodes cannot have number P')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
                     add_clause(-nodetype[c][e][k][P][3])
 
-        comment('11.1. NOT: left child has greater number')
+        comment('12.1. NOT: left child has greater number')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
@@ -645,7 +681,7 @@ class CompleteAutomatonTask(Task):
                             rhs.append(child_left[c][e][k][p][ch])
                         add_clause(-nodetype[c][e][k][p][3], *rhs)
 
-        comment('11.2. NOT: child`s parents')
+        comment('12.2. NOT: child`s parents')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
@@ -656,14 +692,14 @@ class CompleteAutomatonTask(Task):
                                        -child_left[c][e][k][p][ch],
                                        parent[c][e][k][ch][p])
 
-        comment('11.3. NOT: no right child')
+        comment('12.3. NOT: no right child')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
                     for p in closed_range(1, P - 1):
                         imply(nodetype[c][e][k][p][3], child_right[c][e][k][p][0])
 
-        comment('11.4a. NOT: child_value_left is a value of left child')
+        comment('12.4a. NOT: child_value_left is a value of left child')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
@@ -678,7 +714,7 @@ class CompleteAutomatonTask(Task):
                                 add_clause(-x1, -x2, -x3, x4)
                                 add_clause(-x1, -x2, x3, -x4)
 
-        comment('11.4b. NOT: child_value_right is False')
+        comment('12.4b. NOT: child_value_right is False')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
@@ -686,7 +722,7 @@ class CompleteAutomatonTask(Task):
                         for u in closed_range(1, U):
                             imply(nodetype[c][e][k][p][3], -child_value_right[c][e][k][p][u])
 
-        comment('11.5. NOT: value is calculated as a negation of child')
+        comment('12.5. NOT: value is calculated as a negation of child')
         for c in closed_range(1, C):
             for e in closed_range(1, E):
                 for k in closed_range(1, K):
@@ -699,43 +735,7 @@ class CompleteAutomatonTask(Task):
                             add_clause(-x1, -x2, x3)
                             add_clause(-x1, x2, -x3)
 
-        log_debug(f'11. Clauses: {so_far()}', symbol='STAT')
-
-        if self.use_bfs:
-            comment('12. BFS constraints')
-            comment('12.1. F_t')
-            for i in closed_range(1, C):
-                for j in closed_range(1, C):
-                    # t_ij <=> OR_{e,k}(transition_iekj)
-                    rhs = []
-                    for e in closed_range(1, E):
-                        for k in closed_range(1, K):
-                            rhs.append(transition[i][e][k][j])
-                    iff_or(bfs_transition[i][j], rhs)
-
-            comment('12.2. F_p')
-            for i in closed_range(1, C):
-                for j in closed_range(1, i):  # to avoid ambiguous unused variable
-                    add_clause(-bfs_parent[j][i])
-                for j in closed_range(i + 1, C):
-                    # p_ji <=> t_ij & AND_[k<i](~t_kj)
-                    rhs = [bfs_transition[i][j]]
-                    for k in closed_range(1, i - 1):
-                        rhs.append(-bfs_transition[k][j])
-                    iff_and(bfs_parent[j][i], rhs)
-
-            comment('12.3. F_ALO(p)')
-            for j in closed_range(2, C):
-                add_clause(*[bfs_parent[j][i] for i in closed_range(1, j - 1)])
-
-            comment('12.4. F_BFS(p)')
-            for k in closed_range(1, C):
-                for i in closed_range(k + 1, C):
-                    for j in closed_range(i + 1, C - 1):
-                        # p_ji => ~p_{j+1,k}
-                        imply(bfs_parent[j][i], -bfs_parent[j + 1][k])
-
-            log_debug(f'12. Clauses: {so_far()}', symbol='STAT')
+        log_debug(f'12. Clauses: {so_far()}', symbol='STAT')
 
         comment('A. AD-HOCs')
         comment('A.1. (comb)')

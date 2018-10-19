@@ -237,16 +237,66 @@ class PartialAutomatonTask(Task):
 
         log_debug(f'2. Clauses: {so_far()}', symbol='STAT')
 
-        comment('3. Output event constraints')
-        comment('3.0. ALO/AMO(output_event)')
+        comment('3. Firing constraints')
+        comment('3.0. only AMO(first_fired)')
+        for c in closed_range(1, C):
+            for e in closed_range(1, E):
+                for u in closed_range(1, U):
+                    AMO(first_fired[c][e][u])
+
+        comment('3.1. (not_fired definition)')
+        for c in closed_range(1, C):
+            for e in closed_range(1, E):
+                for u in closed_range(1, U):
+                    # not_fired[c,e,u,K] <=> OR_{v|passive,tie(v)=e,tin(v)=u}(color[v,c])
+                    rhs = []
+                    for v in tree.V_passive_eu[e][u]:
+                        rhs.append(color[v][c])  # passive: color[v] == color[tp(v)] == color[tpa(v)]
+                    iff_or(not_fired[c][e][u][K], rhs)
+
+        comment('3.2. not_fired extension')
+        for c in closed_range(1, C):
+            for e in closed_range(1, E):
+                for u in closed_range(1, U):
+                    for k in closed_range(2, K):
+                        # nf_k => nf_{k-1}
+                        imply(not_fired[c][e][u][k], not_fired[c][e][u][k - 1])
+                    for k in closed_range(1, K - 1):
+                        # ~nf_k => ~nf_{k+1}
+                        imply(-not_fired[c][e][u][k], -not_fired[c][e][u][k + 1])
+
+                    # Trial: (AND_k(~ff_k) & ~nf_K) => ~nf_1
+                    # aux = new_variable()
+                    # rhs = []
+                    # for k in closed_range(1, K):
+                    #     rhs.append(-first_fired[c][e][u][k])
+                    # rhs.append(-not_fired[c][e][u][K])
+                    # iff_and(aux, rhs)
+                    # imply(aux, -not_fired[c][e][u][1])
+
+        comment('3.3. first_fired and not_fired interaction')
+        for c in closed_range(1, C):
+            for e in closed_range(1, E):
+                for u in closed_range(1, U):
+                    for k in closed_range(1, K):
+                        # ~(ff & nf)
+                        add_clause(-first_fired[c][e][u][k], -not_fired[c][e][u][k])
+                    for k in closed_range(2, K):
+                        # ff_k => nf_{k-1}
+                        imply(first_fired[c][e][u][k], not_fired[c][e][u][k - 1])
+
+        log_debug(f'3. Clauses: {so_far()}', symbol='STAT')
+
+        comment('4. Output event constraints')
+        comment('4.0. ALO/AMO(output_event)')
         for c in closed_range(1, C):
             ALO(output_event[c])
             AMO(output_event[c])
 
-        comment('3.1. Start state does INITO (root`s output event)')
+        comment('4.1. Start state does INITO (root`s output event)')
         add_clause(output_event[1][tree.output_event[1]])
 
-        comment('3.2. Output event is the same as in the tree')
+        comment('4.2. Output event is the same as in the tree')
         for i in closed_range(1, C):
             for j in closed_range(1, C):
                 # OR_{e,k}(transition[i,e,k,j]) <=> ...
@@ -269,15 +319,15 @@ class PartialAutomatonTask(Task):
                     rhs.append(aux)
                 iff_or(leftright, rhs)
 
-        log_debug(f'3. Clauses: {so_far()}', symbol='STAT')
+        log_debug(f'4. Clauses: {so_far()}', symbol='STAT')
 
-        comment('4. Algorithm constraints')
-        comment('4.1. Start state does nothing')
+        comment('5. Algorithm constraints')
+        comment('5.1. Start state does nothing')
         for z in closed_range(1, Z):
             add_clause(-algorithm_0[1][z])
             add_clause(algorithm_1[1][z])
 
-        comment('4.2. Algorithms definition')
+        comment('5.2. Algorithms definition')
         for v in tree.V_active:
             for z in closed_range(1, Z):
                 old = tree.output_value[tree.parent[v]][z]  # parent/tpa, no difference
@@ -291,56 +341,6 @@ class PartialAutomatonTask(Task):
                         imply(color[v][c], -algorithm_1[c][z])
                     elif (old, new) == (True, True):
                         imply(color[v][c], algorithm_1[c][z])
-
-        log_debug(f'4. Clauses: {so_far()}', symbol='STAT')
-
-        comment('5. Firing constraints')
-        comment('5.0. only AMO(first_fired)')
-        for c in closed_range(1, C):
-            for e in closed_range(1, E):
-                for u in closed_range(1, U):
-                    AMO(first_fired[c][e][u])
-
-        comment('5.1. (not_fired definition)')
-        for c in closed_range(1, C):
-            for e in closed_range(1, E):
-                for u in closed_range(1, U):
-                    # not_fired[c,e,u,K] <=> OR_{v|passive,tie(v)=e,tin(v)=u}(color[v,c])
-                    rhs = []
-                    for v in tree.V_passive_eu[e][u]:
-                        rhs.append(color[v][c])  # passive: color[v] == color[tp(v)] == color[tpa(v)]
-                    iff_or(not_fired[c][e][u][K], rhs)
-
-        comment('5.2. not_fired extension')
-        for c in closed_range(1, C):
-            for e in closed_range(1, E):
-                for u in closed_range(1, U):
-                    for k in closed_range(2, K):
-                        # nf_k => nf_{k-1}
-                        imply(not_fired[c][e][u][k], not_fired[c][e][u][k - 1])
-                    for k in closed_range(1, K - 1):
-                        # ~nf_k => ~nf_{k+1}
-                        imply(-not_fired[c][e][u][k], -not_fired[c][e][u][k + 1])
-
-                    # Trial: (AND_k(~ff_k) & ~nf_K) => ~nf_1
-                    # aux = new_variable()
-                    # rhs = []
-                    # for k in closed_range(1, K):
-                    #     rhs.append(-first_fired[c][e][u][k])
-                    # rhs.append(-not_fired[c][e][u][K])
-                    # iff_and(aux, rhs)
-                    # imply(aux, -not_fired[c][e][u][1])
-
-        comment('5.3. first_fired and not_fired interaction')
-        for c in closed_range(1, C):
-            for e in closed_range(1, E):
-                for u in closed_range(1, U):
-                    for k in closed_range(1, K):
-                        # ~(ff & nf)
-                        add_clause(-first_fired[c][e][u][k], -not_fired[c][e][u][k])
-                    for k in closed_range(2, K):
-                        # ff_k => nf_{k-1}
-                        imply(first_fired[c][e][u][k], not_fired[c][e][u][k - 1])
 
         log_debug(f'5. Clauses: {so_far()}', symbol='STAT')
 
