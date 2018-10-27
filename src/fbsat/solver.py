@@ -14,6 +14,10 @@ __all__ = ['StreamSolver', 'FileSolver', 'IncrementalSolver']
 class Solver(ABC):
 
     @abstractmethod
+    def comment(self, s):
+        pass
+
+    @abstractmethod
     def new_variable(self):
         pass
 
