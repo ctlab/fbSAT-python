@@ -32,7 +32,10 @@ class OutputAction:
 
 class ScenarioElement:
     def __init__(self, input_event, input_values, output_actions):
-        assert len(output_actions) == 1
+        # assert len(output_actions) == 1
+        if len(output_actions) != 1:
+            log_warn('Yet we support only single output actions')
+            log_debug(output_actions)
         self.input_event = input_event  # Event :: str
         self.input_values = input_values  # Values :: str  # TODO: what about [bool] ?
         self.output_actions = output_actions  # [OutputAction]
