@@ -160,8 +160,6 @@ class MinimizeGuardTask(Task):
 
         # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 
-        # constraints
-
         comment('7. Parent and children constraints')
         comment('7.0a. ALO/AMO(parent)')
         for p in closed_range(1, P):
@@ -183,11 +181,16 @@ class MinimizeGuardTask(Task):
 
         comment('7.2. All nodes (except root) have parent with lesser number')
         for p in closed_range(2, P):
-            # OR_par(parent[p,par])
+            # OR_{par from 1 to p-1}( parent[p,par] )
             rhs = []
             for par in closed_range(1, p - 1):
                 rhs.append(parent[p][par])
             add_clause(*rhs)
+
+            # AND_{par=0, par from p+1 to P}( parent[p,par] )
+            add_clause(-parent[p][0])
+            for par in closed_range(p + 1, P):
+                add_clause(-parent[p][par])
 
         comment('7.3. parent<->child relation')
         for p in closed_range(1, P - 1):
@@ -249,6 +252,13 @@ class MinimizeGuardTask(Task):
                 rhs.append(child_left[p][ch])
             add_clause(-nodetype[p][1], *rhs)
             add_clause(-nodetype[p][2], *rhs)
+
+            # nodetype[p,1or2] => AND_{ch from 0 to p}( ~child_left[p,ch] )
+            for ch in closed_range(0, p):
+                imply(nodetype[p][1], -child_left[p][ch])
+                imply(nodetype[p][2], -child_left[p][ch])
+            imply(nodetype[p][1], -child_left[p][P])
+            imply(nodetype[p][2], -child_left[p][P])
 
         comment('10.2. AND/OR: right child is adjacent (+1) to left')
         for p in closed_range(1, P - 2):
@@ -329,11 +339,15 @@ class MinimizeGuardTask(Task):
 
         comment('11.1. NOT: left child has greater number')
         for p in closed_range(1, P - 1):
-            # nodetype[p,3] => OR_ch(child_left[p,ch])
+            # nodetype[p,3] => OR_{ch from p+1 to P}( child_left[p,ch] )
             rhs = []
             for ch in closed_range(p + 1, P):
                 rhs.append(child_left[p][ch])
             add_clause(-nodetype[p][3], *rhs)
+
+            # nodetype[p,3] => AND_{ch from 0 to p}( ~child_left[p,ch] )
+            for ch in closed_range(0, p):
+                imply(nodetype[p][3], -child_left[p][ch])
 
         comment('11.2. NOT: child`s parents')
         for p in closed_range(1, P - 1):
