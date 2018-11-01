@@ -160,6 +160,22 @@ class MinimizeGuardTask(Task):
 
         # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 
+        comment('2. ALO/AMO(nodetype)')
+        for p in closed_range(1, P):
+            ALO(nodetype[p])
+            AMO(nodetype[p])
+
+        log_debug(f'2. Clauses: {so_far()}', symbol='STAT')
+
+        comment('3. Root value')
+        for u in closed_range(1, U):
+            if self.roots[u]:
+                add_clause(value[1][u])
+            else:
+                add_clause(-value[1][u])
+
+        log_debug(f'3. Clauses: {so_far()}', symbol='STAT')
+
         comment('7. Parent and children constraints')
         comment('7.0a. ALO/AMO(parent)')
         for p in closed_range(1, P):
@@ -253,7 +269,7 @@ class MinimizeGuardTask(Task):
             add_clause(-nodetype[p][1], *rhs)
             add_clause(-nodetype[p][2], *rhs)
 
-            # nodetype[p,1or2] => AND_{ch from 0 to p}( ~child_left[p,ch] )
+            # nodetype[p,1or2] => AND_{ch from 0 to p; ch=P}( ~child_left[p,ch] )
             for ch in closed_range(0, p):
                 imply(nodetype[p][1], -child_left[p][ch])
                 imply(nodetype[p][2], -child_left[p][ch])
@@ -389,22 +405,6 @@ class MinimizeGuardTask(Task):
                 add_clause(-x1, x2, -x3)
 
         log_debug(f'11. Clauses: {so_far()}', symbol='STAT')
-
-        comment('2. ALO/AMO(nodetype)')
-        for p in closed_range(1, P):
-            ALO(nodetype[p])
-            AMO(nodetype[p])
-
-        log_debug(f'2. Clauses: {so_far()}', symbol='STAT')
-
-        comment('3. Root value')
-        for u in closed_range(1, U):
-            if self.roots[u]:
-                add_clause(value[1][u])
-            else:
-                add_clause(-value[1][u])
-
-        log_debug(f'3. Clauses: {so_far()}', symbol='STAT')
 
         # TODO: ?. Tree constraints
         #       ?.1. Edges
