@@ -71,15 +71,16 @@ CONTEXT_SETTINGS = dict(
               help='Use IncrementalSolver backend')
 @click.option('--filesolver', 'is_filesolver', is_flag=True,
               help='Use FileSolver backend')
-@click.option('--reuse', 'is_reuse', is_flag=True,
+@click.option('--reuse/--no-reuse', 'is_reuse',
+              default=False, show_default=True,
               help='Reuse generated base reduction and objective function')
-@click.option('--bfs/--no-bfs', 'use_bfs', is_flag=True,
+@click.option('--bfs/--no-bfs', 'use_bfs',
               default=True, show_default=True,
               help='Use BFS symmetry-breaking constraints')
-@click.option('--distinct/--no-distinct', 'is_distinct', is_flag=True,
+@click.option('--distinct/--no-distinct', 'is_distinct',
               default=False, show_default=True,
               help='Distinct transitions')
-@click.option('--forbid-or/--no-forbid-or', 'is_forbid_or', is_flag=True,
+@click.option('--forbid-or/--no-forbid-or', 'is_forbid_or',
               default=False, show_default=True,
               help='[complete] Distinct transitions')
 @click.option('--sat-solver', metavar='<cmd>',
@@ -97,12 +98,18 @@ CONTEXT_SETTINGS = dict(
 @click.option('--write-strategy', type=click.Choice(['direct', 'tempfile', 'StringIO', 'pysat']),
               default='StringIO', show_default=True,
               help='[old] Which file-write strategy to use')
-@click.option('--automaton', help='File with pickled automaton')
+@click.option('--automaton', help='[minimize] File with pickled automaton')
+@click.option('--load-tree/--no-load-tree', 'is_load_tree',
+              default=True, show_default=True,
+              help='Load pickled scenario tree')
+@click.option('--dump-tree/--no-dump-tree', 'is_dump_tree',
+              default=True, show_default=True,
+              help='Dump scenario tree with pickle')
 @click.version_option(__version__)
 def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_variable_names,
         filename_prefix, outdir, C, K, P, N, T, Cmax, w, is_minimize, is_incremental, is_filesolver,
         is_reuse, use_bfs, is_distinct, is_forbid_or, sat_solver, sat_isolver, mzn_solver,
-        write_strategy, automaton):
+        write_strategy, automaton, is_load_tree, is_dump_tree):
     log_info('Welcome!')
     time_start = time.time()
     # =====================
@@ -114,7 +121,7 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
     time_start_tree = time.time()
     filename_scenarios_pkl = filename_scenarios + '.pkl'
     log_br()
-    if os.path.exists(filename_scenarios_pkl):
+    if is_load_tree and os.path.exists(filename_scenarios_pkl):
         log_info(f'Unpickling scenario tree from <{filename_scenarios_pkl}>...')
         with open(filename_scenarios_pkl, 'rb') as f:
             scenario_tree = pickle.load(f)
@@ -126,9 +133,10 @@ def cli(strategy, filename_scenarios, filename_predicate_names, filename_output_
         log_info('Building scenario tree...')
         scenario_tree = ScenarioTree.from_files(filename_scenarios, filename_predicate_names, filename_output_variable_names)
         # scenario_tree.pprint(n=30)
-        log_debug(f'Pickling scenarios tree to <{filename_scenarios_pkl}>...')
-        with open(filename_scenarios_pkl, 'wb') as f:
-            pickle.dump(scenario_tree, f)
+        if is_dump_tree:
+            log_debug(f'Pickling scenarios tree to <{filename_scenarios_pkl}>...')
+            with open(filename_scenarios_pkl, 'wb') as f:
+                pickle.dump(scenario_tree, f)
         log_success(f'Successfully built scenario tree of size {scenario_tree.size()} in {time.time() - time_start_tree:.2f} s')
 
     if strategy.startswith('old') and not os.path.exists(os.path.dirname(filename_prefix)):
