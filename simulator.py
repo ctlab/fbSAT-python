@@ -102,13 +102,15 @@ def cli(indir, outdir, number_of_scenarios, scenario_length, is_force_write, is_
     log_debug(f'ScenarioTree size: {scenario_tree.size()}')
     # scenario_tree.pprint(n=10)
 
-    # Pickle scenario tree
+    # Save scenarios (yet, actual saving is not implemented, so just create an empty file)
     path_scenarios = path_output.joinpath('scenarios')
-    # log_debug(f'Saving scenario tree into <{path_scenarios!s}>...')
+    log_debug(f'Saving scenarios into <{path_scenarios!s}>...')
     path_scenarios.touch()
-    path_scenarios_pkl = path_scenarios.with_suffix('.pkl')
-    with path_scenarios_pkl.open('wb') as f:
-        log_debug(f'Pickling scenario tree into <{path_scenarios_pkl!s}>...')
+
+    # Pickle scenario tree
+    path_scenario_tree_pkl = path_scenarios.with_suffix('.pkl')
+    with path_scenario_tree_pkl.open('wb') as f:
+        log_debug(f'Pickling scenario tree into <{path_scenario_tree_pkl!s}>...')
         pickle.dump(scenario_tree, f)
 
     # Save scenarios info
