@@ -1,16 +1,13 @@
-import os
 import json
-import string
-import time
-import pickle
 import pathlib
+import pickle
+import shutil
+import time
 
 import click
 
 from fbsat.printers import *
-from fbsat.scenario import OutputAction, Scenario, ScenarioTree
-from fbsat.tasks import *
-from fbsat.utils import closed_range
+from fbsat.scenario import Scenario, ScenarioTree
 
 
 @click.command(context_settings=dict(
@@ -127,53 +124,6 @@ def cli(indir, outdir, number_of_scenarios, scenario_length, is_force_write, is_
 
     log_br()
     log_success(f'Done simulating {number_of_scenarios} scenario(s) into <{path_output!s}> in {time.time() - time_start_simulate:.2f} s')
-
-    return
-
-    efsm.scenario_tree = scenario_tree
-    efsm.dump(f'{outdir}/efsm_random_C{efsm.number_of_states}_T{efsm.number_of_transitions}_N{efsm.number_of_nodes}')
-    efsm.verify()
-
-    config = dict(scenario_tree=scenario_tree,
-                  # C=C, K=K, P=P, N=N,
-                  w=w,
-                  # use_bfs=True,
-                  # is_distinct=False,
-                  # is_forbid_or=False,
-                  solver_cmd='incremental-cryptominisat',
-                  is_incremental=True,
-                  # is_filesolver=False,
-                  outdir=outdir)
-    # task = MinimalPartialAutomatonTask(**config)
-    task = MinimalCompleteUBAutomatonTask(**config)
-    time_start_task = time.time()
-    minimal_complete_automaton = task.run()
-    time_total_task = time.time() - time_start_task
-
-    with open(f'{outdir}/stats_total.csv', 'w') as f:
-        f.write(f'scenarios,tree_size,C,E,O,X,Z,P,C_real,P_real,T,N,time\n')
-        f.write(f'{len(scenarios)},'
-                f'{scenario_tree.size()},'
-                f'{C},'
-                f'{E},'
-                f'{O},'
-                f'{X},'
-                f'{Z},'
-                f'{P},'
-                f'{minimal_complete_automaton.number_of_states},'
-                f'{minimal_complete_automaton.guard_condition_maxsize},'
-                f'{minimal_complete_automaton.number_of_transitions},'
-                f'{minimal_complete_automaton.number_of_nodes},'
-                f'{time_total_task:.3f}'
-                '\n')
-
-    # with open(f'{outdir}/stats_intermediate.csv', 'w') as f:
-    #     f.write(f'N\n')
-    #     for automaton in task.intermediate:
-    #         f.write(f'{automaton.number_of_nodes}\n')
-
-    log_br()
-    log_success(f'Done bootstraping into {outdir} in {time.time() - time_start_boot:.2f} s')
 
 
 if __name__ == '__main__':

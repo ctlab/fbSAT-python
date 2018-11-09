@@ -1,16 +1,14 @@
-import os
+import json
+import pathlib
+import shutil
 import string
 import time
-import shutil
-import pathlib
-import json
 
 import click
 
 from fbsat.efsm import EFSM
 from fbsat.printers import *
-from fbsat.scenario import OutputAction, Scenario, ScenarioTree
-from fbsat.tasks import *
+from fbsat.scenario import ScenarioTree
 from fbsat.utils import closed_range
 
 
