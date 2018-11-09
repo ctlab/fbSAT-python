@@ -144,7 +144,7 @@ class StreamSolver(Solver):
         self.stream.write(' '.join(map(str, vs)) + ' 0\n')
 
     def solve(self):
-        log_debug(f'Solving with "{self.cmd}"...')
+        # log_debug(f'Solving with "{self.cmd}"...')
         time_start_solve = time.time()
         is_sat = None
         raw_assignment = [None]  # 1-based
@@ -183,7 +183,7 @@ class FileSolver(StreamSolver):
         self.filename_prefix = filename_prefix
 
     def solve(self):
-        log_debug(f'Solving with cmd="{self.cmd}", prefix="{self.filename_prefix}"...')
+        # log_debug(f'Solving with cmd="{self.cmd}", prefix="{self.filename_prefix}"...')
         time_start_solve = time.time()
 
         filename_cnf = f'{self.filename_prefix}.cnf'
@@ -242,7 +242,7 @@ class IncrementalSolver(Solver):
         self.process.stdin.write(' '.join(map(str, vs)) + ' 0\n')
 
     def solve(self):
-        log_debug(f'Solving incrementally with "{self.process.args}"...')
+        # log_debug(f'Solving incrementally with "{self.process.args}"...')
         time_start_solve = time.time()
         p = self.process
         p.stdin.write('solve 0\n')  # TODO: pass timeout?

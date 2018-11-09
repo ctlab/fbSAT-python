@@ -74,7 +74,7 @@ class CompleteAutomatonTask(Task):
     @auto_finalize
     def run(self, N=None, *, fast=False):
         # TODO: rename 'fast' to 'only_assignment'
-        log_debug(f'CompleteAutomatonTask: running for N={N}...')
+        # log_debug(f'CompleteAutomatonTask: running for N={N}...')
         time_start_run = time.time()
 
         self._declare_base_reduction()
@@ -86,12 +86,12 @@ class CompleteAutomatonTask(Task):
         assignment = self.parse_raw_assignment(raw_assignment)
 
         if fast:
-            log_debug(f'CompleteAutomatonTask: done for N={N} in {time.time() - time_start_run:.2f} s')
+            # log_debug(f'CompleteAutomatonTask: done for N={N} in {time.time() - time_start_run:.2f} s')
             return assignment
         else:
             automaton = self.build_efsm(assignment)
 
-            log_debug(f'CompleteAutomatonTask: done for N={N} in {time.time() - time_start_run:.2f} s')
+            # log_debug(f'CompleteAutomatonTask: done for N={N} in {time.time() - time_start_run:.2f} s')
             log_br()
             if automaton:
                 log_success(f'Complete automaton has {automaton.number_of_states} states, {automaton.number_of_transitions} transitions and {automaton.number_of_nodes} nodes')
@@ -100,7 +100,7 @@ class CompleteAutomatonTask(Task):
             return automaton
 
     def finalize(self):
-        log_debug('CompleteAutomatonTask: finalizing...')
+        # log_debug('CompleteAutomatonTask: finalizing...')
         if self.is_incremental:
             self.solver.process.kill()
 
@@ -115,7 +115,7 @@ class CompleteAutomatonTask(Task):
         assert self.number_of_variables == 0
         assert self.number_of_clauses == 0
 
-        log_debug(f'Declaring base reduction for C={C}, K={K}, P={P}...')
+        # log_debug(f'Declaring base reduction for C={C}, K={K}, P={P}...')
         time_start_base = time.time()
 
         # =-=-=-=-=-=
@@ -131,13 +131,13 @@ class CompleteAutomatonTask(Task):
         U = tree.U
         Y = tree.Y  # noqa
 
-        log_debug(f'V = {V}')
-        log_debug(f'E = {E}')
-        log_debug(f'O = {O}')
-        log_debug(f'X = {X}')
-        log_debug(f'Z = {Z}')
-        log_debug(f'U = {U}')
-        log_debug(f'Y = {Y}')
+        # log_debug(f'V = {V}')
+        # log_debug(f'E = {E}')
+        # log_debug(f'O = {O}')
+        # log_debug(f'X = {X}')
+        # log_debug(f'Z = {Z}')
+        # log_debug(f'U = {U}')
+        # log_debug(f'Y = {Y}')
 
         comment = self.solver.comment
         new_variable = self.solver.new_variable
@@ -180,15 +180,15 @@ class CompleteAutomatonTask(Task):
         #  CONSTRAINTS
         # =-=-=-=-=-=-=
 
-        so_far_state = [self.number_of_clauses, time.time()]
+        # so_far_state = [self.number_of_clauses, time.time()]
 
         def so_far():
             now = self.number_of_clauses
             time_now = time.time()
-            ans = now - so_far_state[0]
-            timing = time_now - so_far_state[1]
-            so_far_state[0] = now
-            so_far_state[1] = time_now
+            # ans = now - so_far_state[0]
+            # timing = time_now - so_far_state[1]
+            # so_far_state[0] = now
+            # so_far_state[1] = time_now
             return f'{ans} in {timing:.2f} s'
 
         # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
@@ -199,7 +199,7 @@ class CompleteAutomatonTask(Task):
             ALO(color[v])
             AMO(color[v])
 
-        comment('1.1. Start vertex corresponds to start state')
+        # comment('1.1. Start vertex corresponds to start state')
         add_clause(color[1][1])
 
         comment('1.2. Color definition')
@@ -207,7 +207,7 @@ class CompleteAutomatonTask(Task):
             for v in tree.V_passive:
                 iff(color[v][c], color[tree.parent[v]][c])
 
-        log_debug(f'1. Clauses: {so_far()}', symbol='STAT')
+        # log_debug(f'1. Clauses: {so_far()}', symbol='STAT')
 
         comment('2. Transition constraints')
         comment('2.0. ALO/AMO(transition)')
@@ -249,7 +249,7 @@ class CompleteAutomatonTask(Task):
                 for k in closed_range(1, K - 1):
                     imply(transition[c][e][k][0], transition[c][e][k + 1][0])
 
-        log_debug(f'2. Clauses: {so_far()}', symbol='STAT')
+        # log_debug(f'2. Clauses: {so_far()}', symbol='STAT')
 
         comment('3. Firing constraints')
         comment('3.0. only AMO(first_fired)')
@@ -310,7 +310,7 @@ class CompleteAutomatonTask(Task):
                         imply(first_fired[c][e][u][k], value[c][e][k][1][u])
                         # else => unconstrained
 
-        log_debug(f'3. Clauses: {so_far()}', symbol='STAT')
+        # log_debug(f'3. Clauses: {so_far()}', symbol='STAT')
 
         comment('4. Output event constraints')
         comment('4.0. ALO/AMO(output_event)')
@@ -318,7 +318,7 @@ class CompleteAutomatonTask(Task):
             ALO(output_event[c])
             AMO(output_event[c])
 
-        comment('4.1. Start state does INITO (root`s output event)')
+        # comment('4.1. Start state does INITO (root`s output event)')
         add_clause(output_event[1][tree.output_event[1]])
 
         comment('4.2. Output event is the same as in the tree')
@@ -344,10 +344,10 @@ class CompleteAutomatonTask(Task):
                     rhs.append(aux)
                 iff_or(leftright, rhs)
 
-        log_debug(f'4. Clauses: {so_far()}', symbol='STAT')
+        # log_debug(f'4. Clauses: {so_far()}', symbol='STAT')
 
         comment('5. Algorithm constraints')
-        comment('5.1. Start state does nothing')
+        # comment('5.1. Start state does nothing')
         for z in closed_range(1, Z):
             add_clause(-algorithm_0[1][z])
             add_clause(algorithm_1[1][z])
@@ -367,7 +367,7 @@ class CompleteAutomatonTask(Task):
                     elif (old, new) == (True, True):
                         imply(color[v][c], algorithm_1[c][z])
 
-        log_debug(f'5. Clauses: {so_far()}', symbol='STAT')
+        # log_debug(f'5. Clauses: {so_far()}', symbol='STAT')
 
         if self.use_bfs:
             comment('6. BFS constraints')
@@ -403,7 +403,7 @@ class CompleteAutomatonTask(Task):
                         # p_ji => ~p_{j+1,k}
                         imply(bfs_parent[j][i], -bfs_parent[j + 1][k])
 
-            log_debug(f'6. Clauses: {so_far()}', symbol='STAT')
+            # log_debug(f'6. Clauses: {so_far()}', symbol='STAT')
 
         comment('7. Nodetype constraints')
         comment('7.1. ALO/AMO(nodetype)')
@@ -414,7 +414,7 @@ class CompleteAutomatonTask(Task):
                         ALO(nodetype[c][e][k][p])
                         AMO(nodetype[c][e][k][p])
 
-        log_debug(f'7. Clauses: {so_far()}', symbol='STAT')
+        # log_debug(f'7. Clauses: {so_far()}', symbol='STAT')
 
         comment('8. Parent and children constraints')
         comment('8.0a. ALO/AMO(parent)')
@@ -469,7 +469,7 @@ class CompleteAutomatonTask(Task):
                                        child_left[c][e][k][p][ch],
                                        child_right[c][e][k][p][ch])
 
-        log_debug(f'8. Clauses: {so_far()}', symbol='STAT')
+        # log_debug(f'8. Clauses: {so_far()}', symbol='STAT')
 
         comment('9. None-type nodes constraints')
         comment('9.1. None-type nodes have largest numbers')
@@ -498,7 +498,7 @@ class CompleteAutomatonTask(Task):
                             imply(nodetype[c][e][k][p][4], -child_value_left[c][e][k][p][u])
                             imply(nodetype[c][e][k][p][4], -child_value_right[c][e][k][p][u])
 
-        log_debug(f'9. Clauses: {so_far()}', symbol='STAT')
+        # log_debug(f'9. Clauses: {so_far()}', symbol='STAT')
 
         comment('10. Terminals constraints')
         comment('10.0. ALO/AMO(terminal)')
@@ -546,7 +546,7 @@ class CompleteAutomatonTask(Task):
                                 else:
                                     imply(terminal[c][e][k][p][x], -value[c][e][k][p][u])
 
-        log_debug(f'10. Clauses: {so_far()}', symbol='STAT')
+        # log_debug(f'10. Clauses: {so_far()}', symbol='STAT')
 
         comment('11. AND/OR nodes constraints')
         comment('11.0. AND/OR nodes cannot have numbers P-1 or P')
@@ -661,7 +661,7 @@ class CompleteAutomatonTask(Task):
                             add_clause(-x1, x2, -x3)
                             add_clause(-x1, x2, -x4)
 
-        log_debug(f'11. Clauses: {so_far()}', symbol='STAT')
+        # log_debug(f'11. Clauses: {so_far()}', symbol='STAT')
 
         comment('12. NOT nodes constraints')
         comment('12.0. NOT nodes cannot have number P')
@@ -735,7 +735,7 @@ class CompleteAutomatonTask(Task):
                             add_clause(-x1, -x2, x3)
                             add_clause(-x1, x2, -x3)
 
-        log_debug(f'12. Clauses: {so_far()}', symbol='STAT')
+        # log_debug(f'12. Clauses: {so_far()}', symbol='STAT')
 
         comment('A. AD-HOCs')
         comment('A.1. (comb)')
@@ -821,7 +821,7 @@ class CompleteAutomatonTask(Task):
         #                                    nodetype[c][e][k][ch][0],
         #                                    ~nodetype[c][e][k][ch + 1][0])
 
-        log_debug(f'A. Clauses: {so_far()}', symbol='STAT')
+        # log_debug(f'A. Clauses: {so_far()}', symbol='STAT')
 
         # =-=-=-=-=
         #   FINISH
@@ -846,14 +846,14 @@ class CompleteAutomatonTask(Task):
             totalizer=None
         )
 
-        log_debug(f'Done declaring base reduction ({self.number_of_variables} variables, {self.number_of_clauses} clauses) in {time.time() - time_start_base:.2f} s')
+        # log_debug(f'Done declaring base reduction ({self.number_of_variables} variables, {self.number_of_clauses} clauses) in {time.time() - time_start_base:.2f} s')
 
     def _declare_totalizer(self):
         if self._is_totalizer_declared:
             return
         self._is_totalizer_declared = True
 
-        log_debug('Declaring totalizer...')
+        # log_debug('Declaring totalizer...')
         time_start_totalizer = time.time()
         _nv = self.number_of_variables
         _nc = self.number_of_clauses
@@ -866,10 +866,10 @@ class CompleteAutomatonTask(Task):
         totalizer = self.solver.get_totalizer(_E)
         self.reduction = self.reduction._replace(totalizer=totalizer)
 
-        log_debug(f'Done declaring totalizer ({self.number_of_variables-_nv} variables, {self.number_of_clauses-_nc} clauses) in {time.time() - time_start_totalizer:.2f} s')
+        # log_debug(f'Done declaring totalizer ({self.number_of_variables-_nv} variables, {self.number_of_clauses-_nc} clauses) in {time.time() - time_start_totalizer:.2f} s')
 
     def _declare_comparator(self, N):
-        log_debug(f'Declaring comparator for N={N}...')
+        # log_debug(f'Declaring comparator for N={N}...')
         time_start_comparator = time.time()
         _nc = self.number_of_clauses
 
@@ -884,13 +884,13 @@ class CompleteAutomatonTask(Task):
 
         self._N_defined = N
 
-        log_debug(f'Done declaring nodes comparator ({self.number_of_clauses-_nc} clauses) in {time.time() - time_start_comparator:.2f} s')
+        # log_debug(f'Done declaring nodes comparator ({self.number_of_clauses-_nc} clauses) in {time.time() - time_start_comparator:.2f} s')
 
     def parse_raw_assignment(self, raw_assignment):
         if raw_assignment is None:
             return None
 
-        log_debug('Building assignment...')
+        # log_debug('Building assignment...')
         time_start_assignment = time.time()
 
         wrapper_int = partial(parse_raw_assignment_int, raw_assignment)
@@ -929,7 +929,7 @@ class CompleteAutomatonTask(Task):
                   for p in closed_range(1, self.P)),
         )
 
-        log_debug(f'Done building assignment (T={assignment.T}, N={assignment.N}) in {time.time() - time_start_assignment:.2f} s')
+        # log_debug(f'Done building assignment (T={assignment.T}, N={assignment.N}) in {time.time() - time_start_assignment:.2f} s')
         return assignment
 
     def build_efsm(self, assignment, *, dump=True):
@@ -945,6 +945,6 @@ class CompleteAutomatonTask(Task):
 
         log_success('Complete automaton:')
         automaton.pprint()
-        automaton.verify()
+        automaton.verify(self.scenario_tree)
 
         return automaton

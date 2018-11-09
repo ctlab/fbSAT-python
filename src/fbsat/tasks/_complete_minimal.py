@@ -50,14 +50,14 @@ class MinimalCompleteAutomatonTask(Task):
             log_debug(f'MinimalCompleteAutomatonTask: found minimal C={C}')
         else:
             C = self.C
-            log_debug(f'MinimalCompleteAutomatonTask: using specified C={C}')
+            # log_debug(f'MinimalCompleteAutomatonTask: using specified C={C}')
 
         if self.K is None:
             K = C
-            log_debug(f'MinimalCompleteAutomatonTask: using K=C={K}')
+            # log_debug(f'MinimalCompleteAutomatonTask: using K=C={K}')
         else:
             K = self.K
-            log_debug(f'MinimalCompleteAutomatonTask: using specified K={K}')
+            # log_debug(f'MinimalCompleteAutomatonTask: using specified K={K}')
 
         task = CompleteAutomatonTask(C=C, K=K, **self.subtask_config_complete)
         assignment = task.run(self.N_init, fast=True, finalize=False)
@@ -113,6 +113,6 @@ class MinimalCompleteAutomatonTask(Task):
 
         log_success('Minimal complete automaton:')
         automaton.pprint()
-        automaton.verify()
+        automaton.verify(self.scenario_tree)
 
         return automaton

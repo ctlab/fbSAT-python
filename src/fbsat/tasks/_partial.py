@@ -69,7 +69,7 @@ class PartialAutomatonTask(Task):
 
     @auto_finalize
     def run(self, T=None, *, fast=False):
-        log_debug(f'PartialAutomatonTask: running for T={T}...')
+        # log_debug(f'PartialAutomatonTask: running for T={T}...')
         time_start_run = time.time()
 
         self._declare_base_reduction()
@@ -81,12 +81,12 @@ class PartialAutomatonTask(Task):
         assignment = self.parse_raw_assignment(raw_assignment)
 
         if fast:
-            log_debug(f'PartialAutomatonTask: done for T={T} in {time.time() - time_start_run:.2f} s')
+            # log_debug(f'PartialAutomatonTask: done for T={T} in {time.time() - time_start_run:.2f} s')
             return assignment
         else:
             automaton = self.build_efsm(assignment)
 
-            log_debug(f'PartialAutomatonTask: done for T={T} in {time.time() - time_start_run:.2f} s')
+            # log_debug(f'PartialAutomatonTask: done for T={T} in {time.time() - time_start_run:.2f} s')
             log_br()
             if automaton:
                 log_success(f'Partial automaton has {automaton.number_of_states} states and {automaton.number_of_transitions} transitions')
@@ -95,7 +95,7 @@ class PartialAutomatonTask(Task):
             return automaton
 
     def finalize(self):
-        log_debug('PartialAutomatonTask: finalizing...')
+        # log_debug('PartialAutomatonTask: finalizing...')
         if self.is_incremental:
             self.solver.process.kill()
 
@@ -109,7 +109,7 @@ class PartialAutomatonTask(Task):
         assert self.number_of_variables == 0
         assert self.number_of_clauses == 0
 
-        log_debug(f'Declaring base reduction for C={C}, K={K}...')
+        # log_debug(f'Declaring base reduction for C={C}, K={K}...')
         time_start_base = time.time()
 
         # =-=-=-=-=-=
@@ -125,13 +125,13 @@ class PartialAutomatonTask(Task):
         U = tree.U
         Y = tree.Y  # noqa
 
-        log_debug(f'V = {V}')
-        log_debug(f'E = {E}')
-        log_debug(f'O = {O}')
-        log_debug(f'X = {X}')
-        log_debug(f'Z = {Z}')
-        log_debug(f'U = {U}')
-        log_debug(f'Y = {Y}')
+        # log_debug(f'V = {V}')
+        # log_debug(f'E = {E}')
+        # log_debug(f'O = {O}')
+        # log_debug(f'X = {X}')
+        # log_debug(f'Z = {Z}')
+        # log_debug(f'U = {U}')
+        # log_debug(f'Y = {Y}')
 
         comment = self.solver.comment
         new_variable = self.solver.new_variable
@@ -193,7 +193,7 @@ class PartialAutomatonTask(Task):
             for v in tree.V_passive:
                 iff(color[v][c], color[tree.parent[v]][c])
 
-        log_debug(f'1. Clauses: {so_far()}', symbol='STAT')
+        # log_debug(f'1. Clauses: {so_far()}', symbol='STAT')
 
         comment('2. Transition constraints')
         comment('2.0. ALO/AMO(transition)')
@@ -235,7 +235,7 @@ class PartialAutomatonTask(Task):
                 for k in closed_range(1, K - 1):
                     imply(transition[c][e][k][0], transition[c][e][k + 1][0])
 
-        log_debug(f'2. Clauses: {so_far()}', symbol='STAT')
+        # log_debug(f'2. Clauses: {so_far()}', symbol='STAT')
 
         comment('3. Firing constraints')
         comment('3.0. only AMO(first_fired)')
@@ -285,7 +285,7 @@ class PartialAutomatonTask(Task):
                         # ff_k => nf_{k-1}
                         imply(first_fired[c][e][u][k], not_fired[c][e][u][k - 1])
 
-        log_debug(f'3. Clauses: {so_far()}', symbol='STAT')
+        # log_debug(f'3. Clauses: {so_far()}', symbol='STAT')
 
         comment('4. Output event constraints')
         comment('4.0. ALO/AMO(output_event)')
@@ -319,7 +319,7 @@ class PartialAutomatonTask(Task):
                     rhs.append(aux)
                 iff_or(leftright, rhs)
 
-        log_debug(f'4. Clauses: {so_far()}', symbol='STAT')
+        # log_debug(f'4. Clauses: {so_far()}', symbol='STAT')
 
         comment('5. Algorithm constraints')
         comment('5.1. Start state does nothing')
@@ -342,7 +342,7 @@ class PartialAutomatonTask(Task):
                     elif (old, new) == (True, True):
                         imply(color[v][c], algorithm_1[c][z])
 
-        log_debug(f'5. Clauses: {so_far()}', symbol='STAT')
+        # log_debug(f'5. Clauses: {so_far()}', symbol='STAT')
 
         if self.use_bfs:
             comment('6. BFS constraints')
@@ -378,7 +378,7 @@ class PartialAutomatonTask(Task):
                         # p_ji => ~p_{j+1,k}
                         imply(bfs_parent[j][i], -bfs_parent[j + 1][k])
 
-            log_debug(f'6. Clauses: {so_far()}', symbol='STAT')
+            # log_debug(f'6. Clauses: {so_far()}', symbol='STAT')
 
         comment('A. AD-HOCs')
         comment('A.1. Distinct transitions')
@@ -391,7 +391,7 @@ class PartialAutomatonTask(Task):
                             for k_ in closed_range(k + 1, K):
                                 imply(transition[i][e][k][j], -transition[i][e][k_][j])
 
-        log_debug(f'A. Clauses: {so_far()}', symbol='STAT')
+        # log_debug(f'A. Clauses: {so_far()}', symbol='STAT')
 
         # =-=-=-=-=
         #   FINISH
@@ -408,14 +408,14 @@ class PartialAutomatonTask(Task):
             totalizer=None
         )
 
-        log_debug(f'Done declaring base reduction ({self.number_of_variables} variables, {self.number_of_clauses} clauses) in {time.time() - time_start_base:.2f} s')
+        # log_debug(f'Done declaring base reduction ({self.number_of_variables} variables, {self.number_of_clauses} clauses) in {time.time() - time_start_base:.2f} s')
 
     def _declare_totalizer(self):
         if self._is_totalizer_declared:
             return
         self._is_totalizer_declared = True
 
-        log_debug('Declaring totalizer...')
+        # log_debug('Declaring totalizer...')
         time_start_totalizer = time.time()
         _nv = self.number_of_variables
         _nc = self.number_of_clauses
@@ -427,10 +427,10 @@ class PartialAutomatonTask(Task):
         totalizer = self.solver.get_totalizer(_E)
         self.reduction = self.reduction._replace(totalizer=totalizer)
 
-        log_debug(f'Done declaring totalizer ({self.number_of_variables-_nv} variables, {self.number_of_clauses-_nc} clauses) in {time.time() - time_start_totalizer:.2f} s')
+        # log_debug(f'Done declaring totalizer ({self.number_of_variables-_nv} variables, {self.number_of_clauses-_nc} clauses) in {time.time() - time_start_totalizer:.2f} s')
 
     def _declare_comparator(self, T):
-        log_debug(f'Declaring comparator for T={T}...')
+        # log_debug(f'Declaring comparator for T={T}...')
         time_start_comparator = time.time()
         _nc = self.number_of_clauses
 
@@ -445,13 +445,13 @@ class PartialAutomatonTask(Task):
 
         self._T_defined = T
 
-        log_debug(f'Done declaring comparator ({self.number_of_clauses-_nc} clauses) in {time.time() - time_start_comparator:.2f} s')
+        # log_debug(f'Done declaring comparator ({self.number_of_clauses-_nc} clauses) in {time.time() - time_start_comparator:.2f} s')
 
     def parse_raw_assignment(self, raw_assignment):
         if raw_assignment is None:
             return None
 
-        log_debug('Building assignment...')
+        # log_debug('Building assignment...')
         time_start_assignment = time.time()
 
         wrapper_int = partial(parse_raw_assignment_int, raw_assignment)
@@ -481,10 +481,10 @@ class PartialAutomatonTask(Task):
             for e in closed_range(1, self.scenario_tree.E):
                 Ks.append(sum(transition[c][e][k] != 0
                               for k in closed_range(1, self.K)))
-        log_debug(f'max(K) = {max(Ks)}')
+        # log_debug(f'max(K) = {max(Ks)}')
         # ==================
 
-        log_debug(f'Done building assignment (T={assignment.T}) in {time.time() - time_start_assignment:.2f} s')
+        # log_debug(f'Done building assignment (T={assignment.T}) in {time.time() - time_start_assignment:.2f} s')
         return assignment
 
     def build_efsm(self, assignment, *, dump=True):
@@ -500,6 +500,6 @@ class PartialAutomatonTask(Task):
 
         log_success('Partial automaton:')
         automaton.pprint()
-        automaton.verify()
+        automaton.verify(self.scenario_tree)
 
         return automaton

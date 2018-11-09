@@ -390,6 +390,6 @@ class FullAutomatonTask(Task):
 
         log_success('Full automaton:')
         automaton.pprint()
-        automaton.verify()
+        automaton.verify(self.scenario_tree)
 
         return automaton

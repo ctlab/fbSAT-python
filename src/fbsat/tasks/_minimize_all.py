@@ -72,6 +72,8 @@ class MinimizeAllGuardsTask(Task):
                         # log_debug(f'MinimizeAllGuardsTask: guard on transition k={k} from {transition.source.id} to {transition.destination.id} was not minimized')
                         is_all_minimized = False
 
+            automaton.is_all_minimized = is_all_minimized
+
             log_br()
             if is_all_minimized:
                 total_size = sum(transition.guard.size()
@@ -91,7 +93,7 @@ class MinimizeAllGuardsTask(Task):
 
             log_success('Automaton with minimized guards:')
             automaton.pprint()
-            automaton.verify()
+            automaton.verify(self.scenario_tree)
 
         log_debug(f'MinimizeAllGuardsTask: done in {time.time() - time_start_run:.2f} s')
         log_br()

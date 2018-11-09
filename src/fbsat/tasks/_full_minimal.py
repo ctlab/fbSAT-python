@@ -95,6 +95,6 @@ class MinimalFullAutomatonTask(Task):
 
         log_success('Minimal full automaton:')
         automaton.pprint()
-        automaton.verify()
+        automaton.verify(self.scenario_tree)
 
         return automaton

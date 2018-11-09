@@ -82,7 +82,7 @@ class MinimizeGuardTask(Task):
         self.inputs = inputs
         self.roots = roots
 
-        for P in closed_range(1, 15):
+        for P in closed_range(1, 12):
             log_info(f'Trying P={P}...')
 
             self.P = P

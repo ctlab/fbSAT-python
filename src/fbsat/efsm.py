@@ -1,6 +1,7 @@
 import os
 import pickle
 import random
+import string
 import time
 from abc import ABC, abstractmethod
 from collections import OrderedDict
@@ -445,9 +446,19 @@ class EFSM:
         def __repr__(self):
             return f'State(id={self.id!r}, output_event={self.output_event!r}, algorithm_0={self.algorithm_0!r}, algorithm_1={self.algorithm_1!r})'
 
-    def __init__(self, scenario_tree):
-        self.scenario_tree = scenario_tree
+    def __init__(self, input_events, output_events, input_names, output_names):
         self.states = OrderedDict()
+        self.input_events = input_events
+        self.output_events = output_events
+        self.input_names = input_names
+        self.output_names = output_names
+
+    @classmethod
+    def new_from_scenario_tree(cls, scenario_tree):
+        return cls(scenario_tree.input_events,
+                   scenario_tree.output_events,
+                   scenario_tree.input_names,
+                   scenario_tree.output_names)
 
     @classmethod
     def new_with_full_guards(cls, scenario_tree, assignment):
@@ -462,7 +473,7 @@ class EFSM:
         output_events = tree.output_events  # [str]^O  0-based
         unique_input = tree.unique_input  # [1..U, 1..X]:bool
 
-        efsm = cls(scenario_tree)
+        efsm = cls.new_from_scenario_tree(scenario_tree)
         for c in closed_range(1, C):
             efsm.add_state(c,
                            output_events[assignment.output_event[c] - 1],
@@ -475,8 +486,8 @@ class EFSM:
                 for u in closed_range(1, U):
                     dest = assignment.transition[c][e][u]
                     if dest != c:
-                        guard = FullGuard(unique_input[u], names=tree.predicate_names)
-                        # guard = ParseTreeGuard.from_input(unique_input[u], names=tree.predicate_names)
+                        guard = FullGuard(unique_input[u], names=tree.input_names)
+                        # guard = ParseTreeGuard.from_input(unique_input[u], names=tree.input_names)
                         efsm.add_transition(c, dest, input_events[e - 1], guard)
 
         if efsm.number_of_states != assignment.C:
@@ -501,7 +512,7 @@ class EFSM:
         output_events = tree.output_events  # [str]^O  0-based
         unique_inputs = tree.unique_inputs  # [str]^U  0-based
 
-        efsm = cls(scenario_tree)
+        efsm = cls.new_from_scenario_tree(scenario_tree)
         for c in closed_range(1, C):
             efsm.add_state(c,
                            output_events[assignment.output_event[c] - 1],
@@ -536,7 +547,7 @@ class EFSM:
 
     @classmethod
     def new_with_parse_trees(cls, scenario_tree, assignment):
-        log_debug('Building EFSM...')
+        log_debug('Building EFSM with parse trees...')
         time_start_build = time.time()
 
         tree = scenario_tree
@@ -546,7 +557,7 @@ class EFSM:
         input_events = tree.input_events    # [str]^E  0-based
         output_events = tree.output_events  # [str]^O  0-based
 
-        efsm = cls(scenario_tree)
+        efsm = cls.new_from_scenario_tree(scenario_tree)
         for c in closed_range(1, C):
             efsm.add_state(c,
                            output_events[assignment.output_event[c] - 1],
@@ -565,7 +576,7 @@ class EFSM:
                                                assignment.parent[c][e][k],
                                                assignment.child_left[c][e][k],
                                                assignment.child_right[c][e][k],
-                                               names=tree.predicate_names)
+                                               names=tree.input_names)
                         efsm.add_transition(c, dest, input_event, guard)
 
         if efsm.number_of_states != assignment.C:
@@ -576,6 +587,51 @@ class EFSM:
             log_error(f'Inequal number of nodes: efsm has {efsm.number_of_nodes}, assignment has {assignment.N}')
 
         log_debug(f'Done building EFSM with {efsm.number_of_states} states, {efsm.number_of_transitions} transitions and {efsm.number_of_nodes} nodes in {time.time() - time_start_build:.2f} s')
+        return efsm
+
+    @classmethod
+    def new_random(cls, C, K, P, input_events, output_events, input_names, output_names, algo0_distribution='01', algo1_distribution='01'):
+        assert all(c in '01' for c in algo0_distribution)
+        assert all(c in '01' for c in algo1_distribution)
+
+        log_debug('Building random EFSM...')
+        time_start_build = time.time()
+
+        E = len(input_events)
+        O = len(output_events)
+        X = len(input_names)
+        Z = len(output_names)
+
+        def add_random_state():
+            output_event = random.choice(output_events)
+            algo0 = ''.join(random.choice(algo0_distribution) for _ in range(Z))
+            algo1 = ''.join(random.choice(algo1_distribution) for _ in range(Z))
+            efsm.add_state(c, output_event, algo0, algo1)
+
+        def add_random_transition(c1, c2):
+            input_event = random.choice(input_events)
+            guard = ParseTreeGuard.new_random(P, names=input_names)
+            efsm.add_transition(c1, c2, input_event, guard)
+
+        efsm = cls(input_events, output_events, input_names, output_names)
+        efsm.add_state(1, 'INITO', '0' * Z, '1' * Z)
+        efsm.initial_state = 1
+        for c in closed_range(2, C):
+            add_random_state()
+
+        # `q` is a random Hamiltonian path
+        q = list(closed_range(2, C))
+        random.shuffle(q)
+        q.append(random.choice(list(set(closed_range(2, C)) - {q[-1]})))
+        for c1, c2 in zip([1] + q, q):
+            add_random_transition(c1, c2)
+        for c1 in closed_range(1, C):
+            for _ in range(random.randint(0, K - 1)):
+                c2 = random.choice(closed_range(2, C))  # allow loops
+                # c2 = random.choice(list(set(closed_range(2, C)) - {c1}))  # forbid loops
+                add_random_transition(c1, c2)
+
+        log_debug(f'Done building random EFSM with C={efsm.C}, K={efsm.K}, P={efsm.P}, T={efsm.T}, N={efsm.N} in {time.time() - time_start_build:.2f} s')
         return efsm
 
     @property
@@ -597,6 +653,10 @@ class EFSM:
         return len(self.states)
 
     @property
+    def maximum_outgoing_transitions(self):
+        return max(len(state.transitions) for state in self.states.values())
+
+    @property
     def number_of_transitions(self):
         return sum(len(state.transitions) for state in self.states.values())
 
@@ -611,6 +671,42 @@ class EFSM:
         return max(transition.guard.size()
                    for state in self.states.values()
                    for transition in state.transitions)
+
+    @property
+    def C(self):
+        return self.number_of_states
+
+    @property
+    def K(self):
+        return self.maximum_outgoing_transitions
+
+    @property
+    def P(self):
+        return self.guard_condition_maxsize
+
+    @property
+    def T(self):
+        return self.number_of_transitions
+
+    @property
+    def N(self):
+        return self.number_of_nodes
+
+    @property
+    def E(self):
+        return len(self.input_events)
+
+    @property
+    def O(self):
+        return len(self.output_events)
+
+    @property
+    def X(self):
+        return len(self.input_names)
+
+    @property
+    def Z(self):
+        return len(self.output_names)
 
     def add_state(self, id, output_event, algorithm_0, algorithm_1):
         self.states[id] = self.State(id, output_event, algorithm_0, algorithm_1)
@@ -627,14 +723,16 @@ class EFSM:
         source = self.states[src]
         return source.get_suitable_transition_and_index(input_event, input_values)
 
-    def random_walk(self, n, *, X, Z, input_events, preprocess=False):
+    def random_walk(self, scenario_length, *, input_events, X, Z, distribution='01', preprocess=False):
+        assert all(c in '01' for c in distribution)
+
         scenario = Scenario()
         current_state = self.initial_state
         current_values = '0' * Z
 
-        for _ in range(n):
+        for _ in range(scenario_length):
             input_event = random.choice(input_events)
-            input_values = ''.join(random.choice('01') for _ in range(X))
+            input_values = ''.join(random.choice(distribution) for _ in range(X))
             transition, k = self.get_suitable_transition_and_index(current_state, input_event, input_values)  # Note: k is 1-based, 0 if no transition
 
             if k == 0:
@@ -687,14 +785,10 @@ class EFSM:
         def _r():
             return str(random.randint(1, 1000))
 
-        tree = self.scenario_tree
-
         FBType = etree.Element('FBType')
 
         etree.SubElement(FBType, 'Identification', Standard='61499-2')
-        etree.SubElement(FBType, 'VersionInfo', Organization='nxtControl GmbH', Version='0.0',
-                         Author='fbSAT', Date='2011-08-30', Remarks='Template', Namespace='Main',
-                         Name='CentralController', Comment='Basic Function Block Type')
+        etree.SubElement(FBType, 'VersionInfo', Organization='nxtControl GmbH', Version='0.0', Author='fbSAT', Date='2011-08-30', Remarks='Template', Namespace='Main', Name='CentralController', Comment='Basic Function Block Type')
         InterfaceList = etree.SubElement(FBType, 'InterfaceList')
         BasicFB = etree.SubElement(FBType, 'BasicFB')
 
@@ -704,25 +798,25 @@ class EFSM:
         EventOutputs = etree.SubElement(InterfaceList, 'EventOutputs')
 
         # InterfaceList::InputVars declaration
-        for input_variable_name in tree.predicate_names:
-            etree.SubElement(InputVars, 'VarDeclaration', Name=input_variable_name, Type='BOOL')
+        for input_name in self.input_names:
+            etree.SubElement(InputVars, 'VarDeclaration', Name=input_name, Type='BOOL')
 
         # InterfaceList::OutputVars declaration
-        for output_variable_name in tree.output_variable_names:
-            etree.SubElement(OutputVars, 'VarDeclaration', Name=output_variable_name, Type='BOOL')
+        for output_name in self.output_names:
+            etree.SubElement(OutputVars, 'VarDeclaration', Name=output_name, Type='BOOL')
 
         # InterfaceList::EventInputs declaration
-        for input_event in ('INIT',) + tree.input_events:
+        for input_event in ('INIT',) + tuple(self.input_events):
             e = etree.SubElement(EventInputs, 'Event', Name=input_event)
             if input_event != 'INIT':
-                for input_variable_name in tree.predicate_names:
-                    etree.SubElement(e, 'With', Var=input_variable_name)
+                for input_name in self.input_names:
+                    etree.SubElement(e, 'With', Var=input_name)
 
         # InterfaceList::EventOutputs declaration
-        for output_event in tree.output_events:
+        for output_event in self.output_events:
             e = etree.SubElement(EventOutputs, 'Event', Name=output_event)
             if output_event != 'INITO':
-                for name in tree.output_variable_names:
+                for name in self.output_names:
                     etree.SubElement(e, 'With', Var=name)
 
         # BasicFB::ECC declaration
@@ -745,7 +839,7 @@ class EFSM:
         algorithms = set((state.algorithm_0, state.algorithm_1) for state in self.states.values())
         for algorithm_0, algorithm_1 in algorithms:
             a = etree.SubElement(BasicFB, 'Algorithm', Name=f'{algorithm_0}_{algorithm_1}')
-            st = algorithm2st(tree.output_variable_names, algorithm_0, algorithm_1)
+            st = algorithm2st(self.output_names, algorithm_0, algorithm_1)
             etree.SubElement(a, 'ST', Text=st)
 
         return etree.tostring(FBType, encoding='UTF-8', xml_declaration=True, pretty_print=True).decode()
@@ -758,14 +852,14 @@ class EFSM:
         state_names = ', '.join(state.__str_smv__() for state in self.states.values())
         s.write(f'\nVAR _state : {{{state_names}}};\n')
 
-        for input_event in self.scenario_tree.input_events:
+        for input_event in self.input_events:
             s.write(f'VAR {input_event} : boolean;\n')
-        for input_variable_name in self.scenario_tree.predicate_names:
-            s.write(f'VAR {input_variable_name} : boolean;\n')
-        for output_event in self.scenario_tree.output_events:
+        for input_name in self.input_names:
+            s.write(f'VAR {input_name} : boolean;\n')
+        for output_event in self.output_events:
             s.write(f'VAR {output_event} : boolean;\n')
-        for output_variable_name in self.scenario_tree.output_variable_names:
-            s.write(f'VAR {output_variable_name} : boolean;\n')
+        for output_name in self.output_names:
+            s.write(f'VAR {output_name} : boolean;\n')
 
         s.write('\nASSIGN\n')
 
@@ -777,10 +871,9 @@ class EFSM:
         s.write('    TRUE: _state;\n')
         s.write('esac;\n')
 
-        for o in closed_range(1, self.scenario_tree.O):
-            if o == self.scenario_tree.output_event[1]:
+        for output_event in self.output_events:
+            if output_event == 'INITO':
                 continue
-            output_event = self.scenario_tree.output_events[o - 1]
             s.write(f'\ninit({output_event}) := FALSE;\n')
             s.write(f'\nnext({output_event}) := case\n')
             for state in self.states.values():
@@ -789,10 +882,10 @@ class EFSM:
             s.write('    TRUE: FALSE;\n')
             s.write('esac;\n')
 
-        for z in closed_range(1, self.scenario_tree.Z):
-            output_variable_name = self.scenario_tree.output_variable_names[z - 1]
-            s.write(f'\ninit({output_variable_name}) := FALSE;\n')
-            s.write(f'\nnext({output_variable_name}) := case\n')
+        for z in closed_range(1, self.Z):
+            output_name = self.output_names[z - 1]
+            s.write(f'\ninit({output_name}) := FALSE;\n')
+            s.write(f'\nnext({output_name}) := case\n')
             d = {'00': [], '01': [], '10': [], '11': []}
             for state in self.states.values():
                 for transition in state.transitions:
@@ -801,17 +894,23 @@ class EFSM:
                     d[f'0{new0}'].append(f'next(_state) = {transition.destination.__str_smv__()}')
                     d[f'1{new1}'].append(f'next(_state) = {transition.destination.__str_smv__()}')
             if d['00']:
-                s.write(f'    !{output_variable_name} & (' + ' | '.join(d['00']) + ') : FALSE;\n')
+                s.write(f'    !{output_name} & (' + ' | '.join(d['00']) + ') : FALSE;\n')
             if d['01']:
-                s.write(f'    !{output_variable_name} & (' + ' | '.join(d['01']) + ') : TRUE;\n')
+                s.write(f'    !{output_name} & (' + ' | '.join(d['01']) + ') : TRUE;\n')
             if d['10']:
-                s.write(f'    {output_variable_name} & (' + ' | '.join(d['10']) + ') : FALSE;\n')
+                s.write(f'    {output_name} & (' + ' | '.join(d['10']) + ') : FALSE;\n')
             if d['11']:
-                s.write(f'    {output_variable_name} & (' + ' | '.join(d['11']) + ') : TRUE;\n')
-            s.write(f'    TRUE : {output_variable_name};\n')
+                s.write(f'    {output_name} & (' + ' | '.join(d['11']) + ') : TRUE;\n')
+            s.write(f'    TRUE : {output_name};\n')
             s.write('esac;\n')
 
         return s.getvalue()
+
+    def write_pkl(self, filename):
+        log_debug(f'Pickling EFSM to <{filename}>...')
+
+        with open(filename, 'wb') as f:
+            pickle.dump(self, f)
 
     def write_gv(self, filename):
         log_debug(f'Dumping EFSM in GV format to <{filename}>...')
@@ -831,20 +930,18 @@ class EFSM:
         with open(filename, 'w') as f:
             f.write(self.get_smv_string())
 
-    def write_pkl(self, filename):
-        log_debug(f'Pickling EFSM to <{filename}>...')
-
-        with open(filename, 'wb') as f:
-            pickle.dump(self, f)
-
     def dump(self, prefix):
+        filename_pkl = prefix + '.pkl'
+        self.write_pkl(filename_pkl)
+
         filename_gv = prefix + '.gv'
         self.write_gv(filename_gv)
 
-        output_format = 'svg'
-        cmd = f'dot -T{output_format} {filename_gv} -O'
-        log_debug(cmd, symbol='$')
-        os.system(cmd)
+        # for output_format in ['svg', 'pdf']:
+        for output_format in ['svg']:
+            cmd = f'dot -T{output_format} {filename_gv} -O'
+            log_debug(cmd, symbol='$')
+            os.system(cmd)
 
         filename_fbt = prefix + '.fbt'
         self.write_fbt(filename_fbt)
@@ -852,22 +949,18 @@ class EFSM:
         filename_smv = prefix + '.smv'
         self.write_smv(filename_smv)
 
-        filename_pkl = prefix + '.pkl'
-        self.write_pkl(filename_pkl)
-
-    def verify(self):
+    def verify(self, scenario_tree):
         log_info('Verifying...')
         time_start_verify = time.time()
+        is_ok = True
+        root = scenario_tree[1]
 
-        tree = self.scenario_tree
-        root = tree[1]
-
-        for i, path in enumerate(tree.paths_to_leaves(), start=1):
+        for i, path in enumerate(scenario_tree.paths_to_leaves(), start=1):
             current_state = self.initial_state  # :: int
             current_values = root.data.output_values
 
             for j, identifier in enumerate(path[1:], start=1):  # exclude root from path
-                element = tree[identifier].data
+                element = scenario_tree[identifier].data
                 input_event = element.input_event
                 input_values = element.input_values
                 new_state, output_event, new_values = self.go(current_state, input_event, input_values, current_values)
@@ -875,14 +968,27 @@ class EFSM:
 
                 if output_event != element.output_event and new_values != element.output_values:
                     log_error(f'incorrect output_event and output_values', symbol=f'{i}:{j}/{len(path)-1}')
+                    is_ok = False
                 elif output_event != element.output_event:
                     log_error(f'incorrect output_event (oe={output_event} != elem.oe={element.output_event})', symbol=f'{i}:{j}/{len(path)-1}')
+                    is_ok = False
                 elif new_values != element.output_values:
                     log_error(f'incorrect output_values (ov={new_values} != elem.ov={element.output_values})', symbol=f'{i}:{j}/{len(path)-1}')
-                assert output_event == element.output_event
-                assert new_values == element.output_values
+                    is_ok = False
+                # assert output_event == element.output_event
+                # assert new_values == element.output_values
+                if output_event != element.output_event or new_values != element.output_values:
+                    # log_warn(f'current state: {current_state}')
+                    # log_warn(f'new state: {new_state}')
+                    # log_warn(f'output event: {output_event}')
+                    # log_warn(f'new values: {new_values}')
+                    # log_warn('failed scenario:')
+                    # for _j, _identifier in enumerate(path[1:], start=1):
+                    #     log_debug(f'{scenario_tree[_identifier].data}', symbol=f'{_j: >2}/{len(path)-1}')
+                    raise AssertionError()
 
                 current_state = new_state
                 current_values = new_values
 
-        log_success(f'Done verifying in {time.time() - time_start_verify:.2f} s')
+        log_success(f'Done verifying {scenario_tree.number_of_scenarios} scenario(s) in {time.time() - time_start_verify:.2f} s')
+        return is_ok

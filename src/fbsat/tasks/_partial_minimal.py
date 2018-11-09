@@ -98,6 +98,6 @@ class MinimalPartialAutomatonTask(Task):
 
         log_success('Minimal partial automaton:')
         automaton.pprint()
-        automaton.verify()
+        automaton.verify(self.scenario_tree)
 
         return automaton

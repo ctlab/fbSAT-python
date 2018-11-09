@@ -11,7 +11,7 @@ __all__ = ['MinimalCompleteUBAutomatonTask']
 class MinimalCompleteUBAutomatonTask(Task):
 
     def __init__(self, scenario_tree, *, C=None, K=None, w=None, use_bfs=True, is_distinct=False, is_forbid_or=False, solver_cmd=None, is_incremental=False, is_filesolver=False, outdir=''):
-        # w :: 0=None=inf: only UB, 1: first-sat, 2: heuristic, >2: very-heuristic
+        # w :: None=inf: only UB, 0: first-sat, 1-2: heuristic, >2: very-heuristic
         self.scenario_tree = scenario_tree
         self.C = C
         self.K = K
@@ -131,6 +131,6 @@ class MinimalCompleteUBAutomatonTask(Task):
 
         log_success('Minimal complete automaton:')
         automaton.pprint()
-        automaton.verify()
+        automaton.verify(self.scenario_tree)
 
         return automaton

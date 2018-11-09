@@ -141,7 +141,8 @@ class Scenario:
         log_debug(f'Preprocessing scenarios...')
         time_start_preprocessing = time.time()
 
-        scenarios = list(map(Scenario.preprocess, scenarios_full))
+        # scenarios = list(map(Scenario.preprocess, scenarios_full))
+        scenarios = scenarios_full
 
         log_debug(f'Done preprocessing {len(scenarios)} scenarios from {sum(map(len, scenarios_full))} down to {sum(map(len, scenarios))} elements in {time.time() - time_start_preprocessing:.2f} s')
         return scenarios
@@ -149,18 +150,25 @@ class Scenario:
 
 class ScenarioTree(treelib.Tree):
 
-    def __init__(self, scenarios):
+    def __init__(self, scenarios, *, is_trie=True):
         super().__init__()
+
+        self.number_of_scenarios = len(scenarios)
 
         clock = itertools.count(start=1)
         root = self.create_node(identifier=next(clock), data=ScenarioElement(None, None, [OutputAction('INITO', '')]))
         for scenario in scenarios:
             current = root
             for element in scenario.elements:
-                for child in self.children(current.identifier):
-                    if (child.data.input_event, child.data.input_values) == (element.input_event, element.input_values):
-                        current = child
-                        break
+                if is_trie:
+                    for child in self.children(current.identifier):
+                        if (child.data.input_event, child.data.input_values) == (element.input_event, element.input_values):
+                            current = child
+                            break
+                    else:
+                        current = self.create_node(identifier=next(clock),
+                                                   parent=current,
+                                                   data=element)
                 else:
                     current = self.create_node(identifier=next(clock),
                                                parent=current,
@@ -250,51 +258,51 @@ class ScenarioTree(treelib.Tree):
                 self.V_passive_eu[e][u].append(v)
 
     @staticmethod
-    def from_files(filename_scenarios, filename_predicate_names, filename_output_variable_names, preprocess=True):
+    def from_files(filename_scenarios, filename_input_names, filename_output_names, preprocess=True):
         scenarios = Scenario.read_scenarios(filename_scenarios)
         if preprocess:
             scenarios = Scenario.preprocess_scenarios(scenarios)
         tree = ScenarioTree(scenarios)
 
-        predicate_names = read_names(filename_predicate_names)
-        # Fix predicate names if mismatch
-        if len(predicate_names) != tree.X:
-            predicate_names = [f'x{i+1}' for i in range(tree.X)]
-            log_warn('predicate_names are fixed due to mismatch: ' + ','.join(predicate_names))
+        input_names = read_names(filename_input_names)
+        # Fix input_variable names if mismatch
+        if len(input_names) != tree.X:
+            input_names = [f'x{i+1}' for i in range(tree.X)]
+            log_warn('input_names are fixed due to mismatch: ' + ','.join(input_names))
 
-        output_variable_names = read_names(filename_output_variable_names)
+        output_names = read_names(filename_output_names)
         # Fix output variable names if mismatch
-        if len(output_variable_names) != tree.Z:
-            output_variable_names = [f'z{i+1}' for i in range(tree.Z)]
-            log_warn('output_variable_names are fixed due to mismatch: ' + ','.join(output_variable_names))
+        if len(output_names) != tree.Z:
+            output_names = [f'z{i+1}' for i in range(tree.Z)]
+            log_warn('output_names are fixed due to mismatch: ' + ','.join(output_names))
 
         tree.scenarios_filename = filename_scenarios
-        tree.predicate_names = predicate_names
-        tree.output_variable_names = output_variable_names
+        tree.input_names = input_names
+        tree.output_names = output_names
 
         return tree
 
     @property
-    def predicate_names(self):
-        if hasattr(self, '_predicate_names'):
-            return self._predicate_names
+    def input_names(self):
+        if hasattr(self, '_input_names'):
+            return self._input_names
         else:
             return list(map(lambda x: f'x{x}', closed_range(1, self.X)))
 
-    @predicate_names.setter
-    def predicate_names(self, value):
-        self._predicate_names = value
+    @input_names.setter
+    def input_names(self, value):
+        self._input_names = value
 
     @property
-    def output_variable_names(self):
-        if hasattr(self, '_output_variable_names'):
-            return self._output_variable_names
+    def output_names(self):
+        if hasattr(self, '_output_names'):
+            return self._output_names
         else:
             return [f'z{z}' for z in closed_range(1, self.Z)]
 
-    @output_variable_names.setter
-    def output_variable_names(self, value):
-        self._output_variable_names = value
+    @output_names.setter
+    def output_names(self, value):
+        self._output_names = value
 
     @property
     def scenarios_stem(self):
