@@ -753,11 +753,11 @@ class EFSM:
 
     def pprint(self):
         for state in self.states.values():
-            log_debug(state)
+            log_debug(f'  ┌─{state}', symbol=None)
             if state.transitions:
                 for transition in state.transitions[:-1]:
-                    log_debug(f'├──{transition}')
-                log_debug(f'└──{state.transitions[-1]}')
+                    log_debug(f'  ├──{transition}', symbol=None)
+                log_debug(f'  └──{state.transitions[-1]}', symbol=None)
 
     def get_gv_string(self):
         s = StringIO()
