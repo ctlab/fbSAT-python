@@ -1,4 +1,3 @@
-import os
 import time
 import pathlib
 from collections import namedtuple
@@ -39,6 +38,11 @@ class CompleteAutomatonTask(Task):
         self.C = C
         self.K = K
         self.P = P
+        self.use_bfs = use_bfs
+        self.is_distinct = is_distinct
+        self.is_forbid_or = is_forbid_or
+        self.is_incremental = is_incremental
+        self.is_filesolver = is_filesolver
         self.path_output = path_output
 
         self.params = dict(C=C, K=K, P=P, use_bfs=use_bfs, is_distinct=is_distinct, is_forbid_or=is_forbid_or, solver_cmd=solver_cmd, is_incremental=is_incremental, is_filesolver=is_filesolver, outdir=str(path_output))
@@ -107,7 +111,7 @@ class CompleteAutomatonTask(Task):
     @auto_finalize
     def run(self, N=None, *, fast=False):
         # TODO: rename 'fast' to 'only_assignment'
-        # log_debug(f'CompleteAutomatonTask: running for N={N}...')
+        log_debug(f'CompleteAutomatonTask: running for N={N}...')
         time_start_run = time.time()
 
         path_run = self.path_output / f'run_N{N}'
@@ -124,12 +128,14 @@ class CompleteAutomatonTask(Task):
         if fast:
             time_total_run = time.time() - time_start_run
             self.save_results(assignment, N, time_total_run, path_run)
+            log_debug(f'CompleteAutomatonTask: done in {time_total_run:.2f} s')
             return assignment
         else:
             automaton = self.build_efsm(assignment)
             time_total_run = time.time() - time_start_run
-            self.save_results(automaton, N, time_total_run, path_run)
             self.save_efsm(automaton, path_run)
+            self.save_results(automaton, N, time_total_run, path_run)
+            log_debug(f'CompleteAutomatonTask: done in {time_total_run:.2f} s')
             log_br()
             if automaton:
                 log_success(f'Complete automaton has {automaton.C} states, {automaton.T} transitions and {automaton.N} nodes')

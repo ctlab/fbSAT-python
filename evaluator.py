@@ -118,7 +118,7 @@ def cli(indir, outdir, method, C, K, P, T, N, w, use_bfs, is_distinct, is_forbid
                       solver_cmd=sat_solver,
                       is_incremental=is_incremental,
                       is_filesolver=is_filesolver,
-                      outdir=str(path_output))
+                      path_output=path_output)
         task = PartialAutomatonTask(**config)
         efsm = task.run(T)
 
@@ -130,8 +130,34 @@ def cli(indir, outdir, method, C, K, P, T, N, w, use_bfs, is_distinct, is_forbid
                       solver_cmd=sat_solver,
                       is_incremental=is_incremental,
                       is_filesolver=is_filesolver,
-                      outdir=str(path_output))
+                      path_output=path_output)
         task = MinimalPartialAutomatonTask(**config)
+        efsm = task.run()
+
+    elif method == 'extended':
+        config = dict(scenario_tree=scenario_tree,
+                      C=C, K=K, P=P,
+                      use_bfs=use_bfs,
+                      is_distinct=is_distinct,
+                      is_forbid_or=is_forbid_or,
+                      solver_cmd=sat_solver,
+                      is_incremental=is_incremental,
+                      is_filesolver=is_filesolver,
+                      path_output=path_output)
+        task = CompleteAutomatonTask(**config)
+        efsm = task.run()
+
+    elif method == 'extended-min':
+        config = dict(scenario_tree=scenario_tree,
+                      C=C, K=K, P=P, N_init=N,
+                      use_bfs=use_bfs,
+                      is_distinct=is_distinct,
+                      is_forbid_or=is_forbid_or,
+                      solver_cmd=sat_solver,
+                      is_incremental=is_incremental,
+                      is_filesolver=is_filesolver,
+                      path_output=path_output)
+        task = MinimalCompleteAutomatonTask(**config)
         efsm = task.run()
 
     elif method == 'extended-min-ub':
@@ -143,7 +169,7 @@ def cli(indir, outdir, method, C, K, P, T, N, w, use_bfs, is_distinct, is_forbid
                       solver_cmd=sat_solver,
                       is_incremental=is_incremental,
                       is_filesolver=is_filesolver,
-                      outdir=str(path_output))
+                      path_output=path_output)
         task = MinimalCompleteUBAutomatonTask(**config)
         efsm = task.run()
 

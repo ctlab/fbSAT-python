@@ -1,4 +1,3 @@
-import os
 import time
 import pathlib
 
@@ -26,6 +25,11 @@ class MinimalCompleteAutomatonTask(Task):
         self.K = K
         self.P = P
         self.N_init = N_init
+        self.use_bfs = use_bfs
+        self.is_distinct = is_distinct
+        self.is_forbid_or = is_forbid_or
+        self.is_incremental = is_incremental
+        self.is_filesolver = is_filesolver
         self.path_output = path_output
         self.subtask_config_minpartial = dict(scenario_tree=scenario_tree,
                                               use_bfs=use_bfs,
@@ -36,14 +40,7 @@ class MinimalCompleteAutomatonTask(Task):
                                             is_distinct=is_distinct,
                                             is_forbid_or=is_forbid_or)
 
-        self.subtask_config = dict(scenario_tree=scenario_tree,
-                                   use_bfs=use_bfs,
-                                   is_distinct=is_distinct,
-                                   solver_cmd=solver_cmd,
-                                   is_incremental=is_incremental,
-                                   is_filesolver=is_filesolver)
-
-        self.params = dict(C=C, K=K, N_init=N_init, use_bfs=use_bfs, is_distinct=is_distinct, solver_cmd=solver_cmd, is_incremental=is_incremental, is_filesolver=is_filesolver, outdir=str(path_output))
+        self.params = dict(C=C, K=K, N_init=N_init, use_bfs=use_bfs, is_distinct=is_distinct, is_forbid_or=is_forbid_or, solver_cmd=solver_cmd, is_incremental=is_incremental, is_filesolver=is_filesolver, outdir=str(path_output))
         self.save_params()
 
         self.path_intermediate = self.path_output / 'intermediate'
@@ -72,6 +69,8 @@ class MinimalCompleteAutomatonTask(Task):
         log_debug(f'Saving intermediate calls info into <{path_calls}>...')
         json_dump(self.intermediate_calls, path_calls)
 
+        # TODO: merge intermediate calls from all subtasks... somehow...
+
     def save_efsm(self, efsm):
         if efsm is None:
             return
@@ -89,12 +88,12 @@ class MinimalCompleteAutomatonTask(Task):
         log_debug(f'Dumping EFSM into <{path_efsm!s}>...')
         efsm.dump(str(path_efsm))
 
-    def create_basic_min_subtask_call(self, C, K):
+    def create_basic_min_subtask_call(self):
         call_name = 'basic-min-onlyC'
-        path_call = self.path_intermediate / f'{len(self.intermediate_calls):0>4}_{call_name}_C{C}_K{K}'
+        path_call = self.path_intermediate / f'{len(self.intermediate_calls):0>4}_{call_name}'
         path_call.mkdir(parents=True)
 
-        config = dict(C=C, K=K, path_output=path_call, **self.subtask_config_minpartial)
+        config = dict(**self.subtask_config_minpartial, path_output=path_call)
         task = MinimalPartialAutomatonTask(**config)
 
         def subtask_call():
@@ -103,14 +102,13 @@ class MinimalCompleteAutomatonTask(Task):
             time_total_call = time.time() - time_start_call
 
             if assignment:
-                call_results = dict(C=assignment.C, K=assignment.K, P=assignment.P,
-                                    T=assignment.T, N=assignment.N,
+                call_results = dict(C=assignment.C, K=assignment.K, T=assignment.T,
                                     SAT=True, time=time_total_call)
             else:
                 call_results = dict(SAT=False, time=time_total_call)
 
             call_info = dict(call=call_name,
-                             params=dict(C=C, K=K),
+                             params=dict(),
                              results=call_results)
             self.intermediate_calls.append(call_info)
 
@@ -120,10 +118,11 @@ class MinimalCompleteAutomatonTask(Task):
 
     def create_extended_subtask_call(self, C, K, P):
         call_name = 'extended'
+        call_params = dict(C=C, K=K, P=P)
         path_call = self.path_intermediate / f'{len(self.intermediate_calls):0>4}_{call_name}_C{C}_K{K}_P{P}'
         path_call.mkdir(parents=True)
 
-        config = dict(**self.subtask_config_complete, C=C, K=K, P=P, path_output=path_call)
+        config = dict(**self.subtask_config_complete, **call_params, path_output=path_call)
         task = CompleteAutomatonTask(**config)
 
         def subtask_call(N):
@@ -139,7 +138,7 @@ class MinimalCompleteAutomatonTask(Task):
                 call_results = dict(SAT=False, time=time_total_call)
 
             call_info = dict(call=call_name,
-                             params=dict(C=C, K=K, P=P, N=N),
+                             params=dict(**call_params, N=N),
                              results=call_results)
             self.intermediate_calls.append(call_info)
 
@@ -151,6 +150,7 @@ class MinimalCompleteAutomatonTask(Task):
         return subtask_call, subtask_finalize
 
     def run(self, *, fast=False):
+        # TODO: rename 'fast' to 'only_assignment'
         log_debug(f'MinimalCompleteAutomatonTask: running...')
         time_start_run = time.time()
         best = None
@@ -176,6 +176,7 @@ class MinimalCompleteAutomatonTask(Task):
         assignment = task_call(self.N_init)
 
         while assignment:
+            log_debug('MinimalCompleteAutomatonTask: searching for minimal N...')
             best = assignment
             N = best.N - 1
             log_br()
@@ -186,14 +187,15 @@ class MinimalCompleteAutomatonTask(Task):
 
         if fast:
             time_total_run = time.time() - time_start_run
-            self.save_results(best, time_total=time_total_run)
+            self.save_results(best, time_total_run)
+            log_debug(f'MinimalCompleteAutomatonTask: done in {time_total_run:.2f} s')
             return best
         else:
             automaton = self.build_efsm(best)
             time_total_run = time.time() - time_start_run
-            self.save_results(automaton, time_total=time_total_run)
             self.save_efsm(automaton)
-
+            self.save_results(automaton, time_total_run)
+            log_debug(f'MinimalCompleteAutomatonTask: done in {time_total_run:.2f} s')
             log_br()
             if automaton:
                 log_success(f'Minimal complete automaton has {automaton.C} states, {automaton.T} transitions and {automaton.N} nodes')

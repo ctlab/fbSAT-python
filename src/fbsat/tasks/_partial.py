@@ -1,4 +1,3 @@
-import os
 import time
 import pathlib
 from collections import namedtuple
@@ -36,6 +35,10 @@ class PartialAutomatonTask(Task):
         self.scenario_tree = scenario_tree
         self.C = C
         self.K = K
+        self.use_bfs = use_bfs
+        self.is_distinct = is_distinct
+        self.is_incremental = is_incremental
+        self.is_filesolver = is_filesolver
         self.path_output = path_output
 
         self.params = dict(C=C, K=K, use_bfs=use_bfs, is_distinct=is_distinct, solver_cmd=solver_cmd, is_incremental=is_incremental, is_filesolver=is_filesolver, outdir=str(path_output))
@@ -88,17 +91,6 @@ class PartialAutomatonTask(Task):
         else:
             self.solver = StreamSolver(**self.solver_config)
 
-    def get_stem(self, T=None):
-        C = self.C
-        K = self.K
-        if T is None:
-            return f'partial_{self.scenario_tree.scenarios_stem}_C{C}_K{K}'
-        else:
-            return f'partial_{self.scenario_tree.scenarios_stem}_C{C}_K{K}_T{T}'
-
-    def get_filename_prefix(self, T=None):
-        return os.path.join(self.outdir, self.get_stem(T))
-
     @property
     def number_of_variables(self):
         return self.solver.number_of_variables
@@ -110,8 +102,7 @@ class PartialAutomatonTask(Task):
     @auto_finalize
     def run(self, T=None, *, fast=False):
         # TODO: rename `fast` to `only_assignment`
-
-        # log_debug(f'PartialAutomatonTask: running for T={T}...')
+        log_debug(f'PartialAutomatonTask: running for T={T}...')
         time_start_run = time.time()
 
         path_run = self.path_output / f'run_T{T}'
@@ -128,12 +119,14 @@ class PartialAutomatonTask(Task):
         if fast:
             time_total_run = time.time() - time_start_run
             self.save_results(assignment, T, time_total_run, path_run)
+            log_debug(f'PartialAutomatonTask: done in {time_total_run:.2f} s')
             return assignment
         else:
             automaton = self.build_efsm(assignment)
             time_total_run = time.time() - time_start_run
-            self.save_results(automaton, time_total_run, path_run)
             self.save_efsm(automaton, path_run)
+            self.save_results(automaton, T, time_total_run, path_run)
+            log_debug(f'PartialAutomatonTask: done in {time_total_run:.2f} s')
             log_br()
             if automaton:
                 log_success(f'Partial automaton has {automaton.number_of_states} states and {automaton.number_of_transitions} transitions')

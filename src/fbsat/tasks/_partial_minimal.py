@@ -1,5 +1,4 @@
 import itertools
-import os
 import time
 import pathlib
 
@@ -26,13 +25,17 @@ class MinimalPartialAutomatonTask(Task):
         self.C = C
         self.K = K
         self.T_init = T_init
+        self.use_bfs = use_bfs
+        self.is_distinct = is_distinct
+        self.is_incremental = is_incremental
+        self.is_filesolver = is_filesolver
         self.path_output = path_output
-        self.subtask_config = dict(scenario_tree=scenario_tree,
-                                   use_bfs=use_bfs,
-                                   is_distinct=is_distinct,
-                                   solver_cmd=solver_cmd,
-                                   is_incremental=is_incremental,
-                                   is_filesolver=is_filesolver)
+        self.subtask_config_partial = dict(scenario_tree=scenario_tree,
+                                           use_bfs=use_bfs,
+                                           is_distinct=is_distinct,
+                                           solver_cmd=solver_cmd,
+                                           is_incremental=is_incremental,
+                                           is_filesolver=is_filesolver)
 
         self.params = dict(C=C, K=K, T_init=T_init, use_bfs=use_bfs, is_distinct=is_distinct, solver_cmd=solver_cmd, is_incremental=is_incremental, is_filesolver=is_filesolver, outdir=str(path_output))
         self.save_params()
@@ -78,12 +81,13 @@ class MinimalPartialAutomatonTask(Task):
         log_debug(f'Dumping EFSM into <{path_efsm!s}>...')
         efsm.dump(str(path_efsm))
 
-    def create_subtask_call(self, C, K):
+    def create_basic_subtask_call(self, C, K):
         call_name = 'basic'
+        call_params = dict(C=C, K=K)
         path_call = self.path_intermediate / f'{len(self.intermediate_calls):0>4}_{call_name}_C{C}_K{K}'
         path_call.mkdir(parents=True)
 
-        config = dict(**self.subtask_config, C=C, K=K, path_output=path_call)
+        config = dict(**self.subtask_config_partial, **call_params, path_output=path_call)
         task = PartialAutomatonTask(**config)
 
         def subtask_call(T):
@@ -98,7 +102,7 @@ class MinimalPartialAutomatonTask(Task):
                 call_results = dict(SAT=False, time=time_total_call)
 
             call_info = dict(call=call_name,
-                             params=dict(C=C, K=K, T=T),
+                             params=dict(**call_params, T=T),
                              results=call_results)
             self.intermediate_calls.append(call_info)
 
@@ -111,7 +115,6 @@ class MinimalPartialAutomatonTask(Task):
 
     def run(self, *, fast=False, only_C=False):
         # TODO: rename `fast` to `only_assignment`
-
         log_debug(f'MinimalPartialAutomatonTask: running...')
         time_start_run = time.time()
 
@@ -123,7 +126,7 @@ class MinimalPartialAutomatonTask(Task):
                 log_info(f'Trying C = {C}...')
 
                 K = C
-                task_call, task_finalize = self.create_subtask_call(C, K)
+                task_call, task_finalize = self.create_basic_subtask_call(C, K)
                 assignment = task_call(self.T_init)
 
                 if assignment:
@@ -142,7 +145,7 @@ class MinimalPartialAutomatonTask(Task):
             else:
                 K = self.K
 
-            task_call, task_finalize = self.create_subtask_call(C, K)
+            task_call, task_finalize = self.create_basic_subtask_call(C, K)
             best = task_call(self.T_init)
 
         if not only_C and best:
@@ -163,12 +166,14 @@ class MinimalPartialAutomatonTask(Task):
         if fast:
             time_total_run = time.time() - time_start_run
             self.save_results(best, time_total_run)
+            log_debug(f'MinimalPartialAutomatonTask: done in {time_total_run:.2f} s')
             return best
         else:
             automaton = self.build_efsm(best)
             time_total_run = time.time() - time_start_run
-            self.save_results(automaton, time_total_run)
             self.save_efsm(automaton)
+            self.save_results(automaton, time_total_run)
+            log_debug(f'MinimalPartialAutomatonTask: done in {time_total_run:.2f} s')
             log_br()
             if automaton:
                 log_success(f'Minimal partial automaton has {automaton.C} states and {automaton.T} transitions')
