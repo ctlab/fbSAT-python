@@ -17,7 +17,7 @@ from fbsat.utils import closed_range
 ))
 @click.option('-o', '--output', '--outdir', 'outdir', metavar='<path>',
               type=click.Path(writable=True, file_okay=False), required=True,
-              help='Output folder for generated EFSM (e.g. similation/efsm')
+              help='Output folder for generated EFSM (e.g. simulation/efsm')
 @click.option('-C', 'C', type=int, metavar='<int>', required=True,
               help='Number of states')
 @click.option('-K', 'K', type=int, metavar='<int>',
@@ -49,7 +49,8 @@ from fbsat.utils import closed_range
               help='Write in existing output folder')
 @click.option('--force-remove', 'is_force_remove', is_flag=True,
               help='Remove existing output folder')
-def cli(outdir, C, K, E, O, X, Z, P, input_events, output_events, input_names, output_names, is_force_write, is_force_remove):
+def cli(outdir, C, K, E, O, X, Z, P, input_events, output_events, input_names, output_names,
+        is_force_write, is_force_remove):
     time_start_generate = time.time()
 
     # Ensure output folder exists and maybe recreate it or throw an error
@@ -113,11 +114,11 @@ def cli(outdir, C, K, E, O, X, Z, P, input_events, output_events, input_names, o
     efsm.pprint()
 
     # Dump efsm
-    path_efsm = path_output.joinpath(f'efsm_random_C{efsm.C}_K{efsm.K}_P{efsm.P}_T{efsm.T}_N{efsm.N}')
+    path_efsm = path_output/ f'efsm_random_C{efsm.C}_K{efsm.K}_P{efsm.P}_T{efsm.T}_N{efsm.N}'
     efsm.dump(str(path_efsm))
 
     # Save efsm info
-    path_efsm_info = path_output.joinpath('info_efsm.json')
+    path_efsm_info = path_output / 'info_efsm.json'
     with path_efsm_info.open('w', encoding='utf8') as f:
         log_info(f'Writing EFSM info into <{path_efsm_info!s}>...')
         efsm_info = dict(C=efsm.C, K=efsm.K, P=efsm.P, T=efsm.T, N=efsm.N,
@@ -126,7 +127,8 @@ def cli(outdir, C, K, E, O, X, Z, P, input_events, output_events, input_names, o
         json.dump(efsm_info, f, ensure_ascii=False, indent=4)
 
     log_br()
-    log_success(f'Done generating a random automaton into <{path_output!s}> in {time.time() - time_start_generate:.2f} s')
+    log_success(f'Done generating a random automaton into '
+                f'<{path_output!s}> in {time.time() - time_start_generate:.2f} s')
 
 
 if __name__ == '__main__':

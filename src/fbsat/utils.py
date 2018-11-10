@@ -1,4 +1,5 @@
 import os
+import json
 from functools import wraps
 
 import click
@@ -7,7 +8,7 @@ from .printers import log_debug, log_warn
 
 __all__ = ['NotBool', 'closed_range', 'open_maybe_gzip', 'read_names', 'algorithm2st', 'b2s', 's2b',
            'parse_raw_assignment_algo', 'parse_raw_assignment_bool', 'parse_raw_assignment_int',
-           'auto_finalize']
+           'auto_finalize', 'json_dump']
 
 
 class NotBoolType:
@@ -102,3 +103,8 @@ def auto_finalize(func):
             self.finalize()
         return result
     return wrapped
+
+
+def json_dump(obj, path):
+    with path.open('w', encoding='utf8') as f:
+        json.dump(obj, f, ensure_ascii=False, indent=4)

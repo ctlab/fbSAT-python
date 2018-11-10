@@ -19,14 +19,24 @@ from fbsat.tasks import *
               help='Input folder with scenarios (e.g., simulation/replica0/scenarios')
 @click.option('-o', '--output', '--outdir', 'outdir', metavar='<path>',
               type=click.Path(writable=True, file_okay=False), required=True,
-              help='Output folder for evaluation results (e.g., similation/replica0/out/<method>)')
+              help='Output folder for evaluation results (e.g., simulation/replica0/out/<method>)')
 @click.option('--method', metavar='<method>', required=True,
               type=click.Choice(['full', 'full-min',
                                  'basic', 'basic-min',
                                  'extended', 'extended-min', 'extended-min-ub']),
               help='Method')
+@click.option('-C', 'C', type=int, metavar='<int>',
+              help='Number of colors (automata states)')
+@click.option('-K', 'K', type=int, metavar='<int>',
+              help='Maximum number of transitions from each state')
+@click.option('-P', 'P', type=int, metavar='<int>',
+              help='Maximum number of nodes in guard\'s boolean formula\'s parse tree')
+@click.option('-N', 'N', type=int, metavar='<int>',
+              help='Upper bound on total number of nodes in all guard-trees')
+@click.option('-T', 'T', type=int, metavar='<int>',
+              help='Upper bound on total number of transitions')
 @click.option('-w', 'w', type=int, metavar='<int>',
-              help='[complete-min-ub] Maximum width of local minima')
+              help='[complete-min-ub] Maximum width of local minimum')
 @click.option('--bfs/--no-bfs', 'use_bfs',
               default=True, show_default=True,
               help='Use BFS symmetry-breaking constraints')
@@ -47,7 +57,8 @@ from fbsat.tasks import *
               help='Write in existing output folder')
 @click.option('--force-remove', 'is_force_remove', is_flag=True,
               help='Remove existing output folder')
-def cli(indir, outdir, method, w, use_bfs, is_distinct, is_forbid_or, sat_solver, is_incremental, is_filesolver, is_force_write, is_force_remove):
+def cli(indir, outdir, method, C, K, P, T, N, w, use_bfs, is_distinct, is_forbid_or,
+        sat_solver, is_incremental, is_filesolver, is_force_write, is_force_remove):
     time_start_evaluate = time.time()
 
     path_input = pathlib.Path(indir)
@@ -72,10 +83,11 @@ def cli(indir, outdir, method, w, use_bfs, is_distinct, is_forbid_or, sat_solver
                 else:
                     log_warn(f'Neither a directory nor a file: {child}')
         else:
-            raise click.BadParameter('folder already exists, consider --force-write or --force-remove', param_hint='output')
+            raise click.BadParameter('folder already exists, consider --force-write or --force-remove',
+                                     param_hint='output')
 
     # Load scenarios info
-    path_scenarios_info = path_input.joinpath('info_scenarios.json')
+    path_scenarios_info = path_input / 'info_scenarios.json'
     if not path_scenarios_info.exists():
         raise click.BadParameter(f'folder does not contain {path_scenarios_info.name}', param_hint='input')
     with path_scenarios_info.open() as f:
@@ -87,7 +99,7 @@ def cli(indir, outdir, method, w, use_bfs, is_distinct, is_forbid_or, sat_solver
     tree_size = scenarios_info['tree_size']
 
     # Load scenarios (yet, file with scenarios is empty; actual scenario tree is pickled)
-    path_scenarios = path_input.joinpath(f'scenarios_{number_of_scenarios}x{tree_size}')
+    path_scenarios = path_input / f'scenarios_{number_of_scenarios}x{tree_size}'
     path_scenario_tree = path_scenarios.with_suffix('.pkl')
     with path_scenario_tree.open('rb') as f:
         log_debug(f'Unpickling scenario tree from <{path_scenario_tree!s}>...')
@@ -98,7 +110,31 @@ def cli(indir, outdir, method, w, use_bfs, is_distinct, is_forbid_or, sat_solver
     # run task
     # save results and stats
 
-    if method == 'extended-min-ub':
+    if method == 'basic':
+        config = dict(scenario_tree=scenario_tree,
+                      C=C, K=K,
+                      use_bfs=use_bfs,
+                      is_distinct=is_distinct,
+                      solver_cmd=sat_solver,
+                      is_incremental=is_incremental,
+                      is_filesolver=is_filesolver,
+                      outdir=str(path_output))
+        task = PartialAutomatonTask(**config)
+        efsm = task.run(T)
+
+    elif method == 'basic-min':
+        config = dict(scenario_tree=scenario_tree,
+                      C=C, K=K, T_init=T,
+                      use_bfs=use_bfs,
+                      is_distinct=is_distinct,
+                      solver_cmd=sat_solver,
+                      is_incremental=is_incremental,
+                      is_filesolver=is_filesolver,
+                      outdir=str(path_output))
+        task = MinimalPartialAutomatonTask(**config)
+        efsm = task.run()
+
+    elif method == 'extended-min-ub':
         config = dict(scenario_tree=scenario_tree,
                       w=w,
                       use_bfs=use_bfs,
@@ -106,12 +142,13 @@ def cli(indir, outdir, method, w, use_bfs, is_distinct, is_forbid_or, sat_solver
                       is_forbid_or=is_forbid_or,
                       solver_cmd=sat_solver,
                       is_incremental=is_incremental,
+                      is_filesolver=is_filesolver,
                       outdir=str(path_output))
-
         task = MinimalCompleteUBAutomatonTask(**config)
-        time_start_task = time.time()
         efsm = task.run()
-        time_total_task = time.time() - time_start_task
+
+    else:
+        raise click.BadParameter(f'"{method}" is not yet supported', param_hint='method')
 
     log_br()
     log_success(f'Done evaluating in {time.time() - time_start_evaluate:.2f} s')

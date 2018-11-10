@@ -7,7 +7,7 @@ import time
 import click
 
 from fbsat.printers import *
-from fbsat.scenario import ScenarioTree
+from fbsat.scenario import ScenarioTree, Scenario
 
 
 @click.command(context_settings=dict(
@@ -58,7 +58,7 @@ def cli(indir, outdir, number_of_scenarios, scenario_length, is_force_write, is_
             raise click.BadParameter('folder already exists, consider --force-write or --force-remove', param_hint='output')
 
     # Load automaton info
-    path_efsm_info = path_input.joinpath('info_efsm.json')
+    path_efsm_info = path_input / 'info_efsm.json'
     if not path_efsm_info.exists():
         raise click.BadParameter(f'folder does not contain {path_efsm_info.name}', param_hint='input')
     with path_efsm_info.open() as f:
@@ -77,7 +77,7 @@ def cli(indir, outdir, number_of_scenarios, scenario_length, is_force_write, is_
     output_names = efsm_info['output_names']
 
     # Load pickled automaton
-    path_efsm = path_input.joinpath(f'efsm_random_C{C}_K{K}_P{P}_T{T}_N{N}.pkl')
+    path_efsm = path_input / f'efsm_random_C{C}_K{K}_P{P}_T{T}_N{N}.pkl'
     with path_efsm.open('rb') as f:
         log_debug(f'Unpickling EFSM from <{path_efsm!s}>...')
         efsm = pickle.load(f)
@@ -105,7 +105,7 @@ def cli(indir, outdir, number_of_scenarios, scenario_length, is_force_write, is_
     efsm.verify(scenario_tree)
 
     # Save scenarios (so far, actual saving has not been implemented; just creating an empty file)
-    path_scenarios = path_output.joinpath(f'scenarios_{number_of_scenarios}x{scenario_tree.size()}')
+    path_scenarios = path_output / f'scenarios_{number_of_scenarios}x{scenario_tree.size()}'
     log_debug(f'Saving scenarios into <{path_scenarios!s}>...')
     path_scenarios.touch()
 
@@ -116,7 +116,7 @@ def cli(indir, outdir, number_of_scenarios, scenario_length, is_force_write, is_
         pickle.dump(scenario_tree, f)
 
     # Save scenarios info
-    path_scenarios_info = path_output.joinpath('info_scenarios.json')
+    path_scenarios_info = path_output / 'info_scenarios.json'
     with path_scenarios_info.open('w', encoding='utf8') as f:
         log_info(f'Writing scenarios info into <{path_scenarios_info!s}>...')
         scenarios_info = dict(number_of_scenarios=number_of_scenarios,
