@@ -89,7 +89,7 @@ def cli(indir, outdir, number_of_scenarios, scenario_length, is_force_write, is_
     for _ in range(number_of_scenarios):
         scenarios.append(efsm.random_walk(scenario_length, input_events=input_events,
                                           X=len(input_names), Z=len(output_names)))
-    _tree_size_uncompressed = sum(map(len, scenarios))
+    _elements_uncompressed = sum(map(len, scenarios))
 
     # Preprocess scenarios
     scenarios = Scenario.preprocess_scenarios(scenarios)
@@ -102,8 +102,11 @@ def cli(indir, outdir, number_of_scenarios, scenario_length, is_force_write, is_
     log_debug(f'ScenarioTree size: {scenario_tree.size()}')
     # scenario_tree.pprint(n=10)
 
-    # Save scenarios (yet, actual saving is not implemented, so just create an empty file)
-    path_scenarios = path_output.joinpath('scenarios')
+    # Verify simulated scenarios
+    efsm.verify(scenario_tree)
+
+    # Save scenarios (so far, actual saving has not been implemented; just creating an empty file)
+    path_scenarios = path_output.joinpath(f'scenarios_{number_of_scenarios}x{scenario_tree.size()}')
     log_debug(f'Saving scenarios into <{path_scenarios!s}>...')
     path_scenarios.touch()
 
@@ -118,8 +121,8 @@ def cli(indir, outdir, number_of_scenarios, scenario_length, is_force_write, is_
     with path_scenarios_info.open('w', encoding='utf8') as f:
         log_info(f'Writing scenarios info into <{path_scenarios_info!s}>...')
         scenarios_info = dict(number_of_scenarios=number_of_scenarios,
-                              tree_size_compressed=scenario_tree.size(),
-                              tree_size_uncompressed=_tree_size_uncompressed,
+                              tree_size=scenario_tree.size(),
+                              elements_uncompressed=_elements_uncompressed,
                               input_events=input_events, output_events=output_events,
                               input_names=input_names, output_names=output_names)
         json.dump(scenarios_info, f, ensure_ascii=False, indent=4)
