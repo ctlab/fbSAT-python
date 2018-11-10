@@ -8,7 +8,6 @@ import click
 
 from fbsat.efsm import EFSM
 from fbsat.printers import *
-from fbsat.scenario import ScenarioTree
 from fbsat.utils import closed_range
 
 
@@ -18,8 +17,7 @@ from fbsat.utils import closed_range
 ))
 @click.option('-o', '--output', '--outdir', 'outdir', metavar='<path>',
               type=click.Path(writable=True, file_okay=False), required=True,
-              # default='simulation/efsm', show_default=True,
-              help='Output folder (e.g. similation/efsm')
+              help='Output folder for generated EFSM (e.g. similation/efsm')
 @click.option('-C', 'C', type=int, metavar='<int>', required=True,
               help='Number of states')
 @click.option('-K', 'K', type=int, metavar='<int>',
