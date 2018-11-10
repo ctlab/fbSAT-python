@@ -990,5 +990,5 @@ class EFSM:
                 current_state = new_state
                 current_values = new_values
 
-        log_success(f'Done verifying {scenario_tree.number_of_scenarios} scenario(s) in {time.time() - time_start_verify:.2f} s')
+        log_success(f'Done verifying scenario tree of size {scenario_tree.size()} with {scenario_tree.number_of_scenarios} scenario(s) in {time.time() - time_start_verify:.2f} s')
         return is_ok
