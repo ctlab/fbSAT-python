@@ -7,7 +7,7 @@ import time
 import click
 
 from fbsat.printers import *
-from fbsat.scenario import Scenario, ScenarioTree
+from fbsat.scenario import ScenarioTree
 
 
 @click.command(context_settings=dict(
@@ -16,11 +16,9 @@ from fbsat.scenario import Scenario, ScenarioTree
 ))
 @click.option('-i', '--input', '--efsm', 'indir', metavar='<path>',
               type=click.Path(exists=True, file_okay=False), required=True,
-              # default='simulation/efsm', show_default=True,
               help='Input folder with EFSM (e.g., simulation/efsm')
 @click.option('-o', '--output', '--outdir', 'outdir', metavar='<path>',
               type=click.Path(writable=True, file_okay=False), required=True,
-              # default='simulation/replica0/scenarios', show_default=True,
               help='Output folder for simulated scenarios (e.g., simulation/replica0/scenarios)')
 @click.option('--n-scenarios', 'number_of_scenarios', metavar='<int>',
               default=20, show_default=True,
@@ -81,6 +79,7 @@ def cli(indir, outdir, number_of_scenarios, scenario_length, is_force_write, is_
     # Load pickled automaton
     path_efsm = path_input.joinpath(f'efsm_random_C{C}_K{K}_P{P}_T{T}_N{N}.pkl')
     with path_efsm.open('rb') as f:
+        log_debug(f'Unpickling EFSM from <{path_efsm!s}>...')
         efsm = pickle.load(f)
 
     # Simulate scenarios
@@ -111,9 +110,9 @@ def cli(indir, outdir, number_of_scenarios, scenario_length, is_force_write, is_
     path_scenarios.touch()
 
     # Pickle scenario tree
-    path_scenario_tree_pkl = path_scenarios.with_suffix('.pkl')
-    with path_scenario_tree_pkl.open('wb') as f:
-        log_debug(f'Pickling scenario tree into <{path_scenario_tree_pkl!s}>...')
+    path_scenario_tree = path_scenarios.with_suffix('.pkl')
+    with path_scenario_tree.open('wb') as f:
+        log_debug(f'Pickling scenario tree into <{path_scenario_tree!s}>...')
         pickle.dump(scenario_tree, f)
 
     # Save scenarios info
