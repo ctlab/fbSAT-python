@@ -74,7 +74,7 @@ def cli(indir, outdir, method, C, K, P, T, N, w, use_bfs, is_distinct, is_forbid
         if is_force_write:
             pass
         elif is_force_remove:
-            log_warn(f'Recreating output folder <{path_output}>...')
+            log_warn(f'Clearing output folder <{path_output}>...')
             for child in path_output.iterdir():
                 if child.is_dir():
                     shutil.rmtree(str(child))
@@ -83,8 +83,7 @@ def cli(indir, outdir, method, C, K, P, T, N, w, use_bfs, is_distinct, is_forbid
                 else:
                     log_warn(f'Neither a directory nor a file: {child}')
         else:
-            raise click.BadParameter('folder already exists, consider --force-write or --force-remove',
-                                     param_hint='output')
+            raise click.BadParameter('folder already exists, consider --force-write or --force-remove', param_hint='output')
 
     # Load scenarios info
     path_scenarios_info = path_input / 'info_scenarios.json'
@@ -104,11 +103,6 @@ def cli(indir, outdir, method, C, K, P, T, N, w, use_bfs, is_distinct, is_forbid
     with path_scenario_tree.open('rb') as f:
         log_debug(f'Unpickling scenario tree from <{path_scenario_tree!s}>...')
         scenario_tree = pickle.load(f)
-
-    # EVALUATE:
-    # create task
-    # run task
-    # save results and stats
 
     if method == 'basic':
         config = dict(scenario_tree=scenario_tree,
@@ -162,7 +156,7 @@ def cli(indir, outdir, method, C, K, P, T, N, w, use_bfs, is_distinct, is_forbid
 
     elif method == 'extended-min-ub':
         config = dict(scenario_tree=scenario_tree,
-                      w=w,
+                      C=C, K=K, w=w,
                       use_bfs=use_bfs,
                       is_distinct=is_distinct,
                       is_forbid_or=is_forbid_or,

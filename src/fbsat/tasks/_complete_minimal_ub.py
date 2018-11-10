@@ -185,10 +185,10 @@ class MinimalCompleteUBAutomatonTask(Task):
                 break
 
             if best:
-                N_init = best.N - 1
+                N_new = best.N - 1
             else:
-                N_init = None
-            task_call = self.create_extended_min_subtask_call(C, K, P, N_init)
+                N_new = None
+            task_call = self.create_extended_min_subtask_call(C, K, P, N_new)
             assignment = task_call()
 
             if assignment:
