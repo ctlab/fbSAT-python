@@ -54,6 +54,7 @@ from fbsat.utils import closed_range
 def cli(outdir, C, K, E, O, X, Z, P, input_events, output_events, input_names, output_names, is_force_write, is_force_remove):
     time_start_generate = time.time()
 
+    # Ensure output folder exists and maybe recreate it or throw an error
     path_output = pathlib.Path(outdir)
     if not path_output.exists():
         log_debug(f'Creating output folder <{path_output}>...')
@@ -64,8 +65,6 @@ def cli(outdir, C, K, E, O, X, Z, P, input_events, output_events, input_names, o
             pass
         elif is_force_remove:
             log_warn(f'Recreating output folder <{path_output}>...')
-            # shutil.rmtree(str(path_output))
-            # path_output.mkdir(parents=True)
             for child in path_output.iterdir():
                 if child.is_dir():
                     shutil.rmtree(str(child))
@@ -110,13 +109,16 @@ def cli(outdir, C, K, E, O, X, Z, P, input_events, output_events, input_names, o
     else:
         output_names = [f'z{z}' for z in closed_range(1, Z)]
 
+    # Generate random efsm
     efsm = EFSM.new_random(C, K, P, input_events, output_events, input_names, output_names)
     log_success('Randomly generated EFSM:')
     efsm.pprint()
 
+    # Dump efsm
     path_efsm = path_output.joinpath(f'efsm_random_C{efsm.C}_K{efsm.K}_P{efsm.P}_T{efsm.T}_N{efsm.N}')
     efsm.dump(str(path_efsm))
 
+    # Save efsm info
     path_efsm_info = path_output.joinpath('info_efsm.json')
     with path_efsm_info.open('w', encoding='utf8') as f:
         log_info(f'Writing EFSM info into <{path_efsm_info!s}>...')
