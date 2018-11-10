@@ -1,14 +1,15 @@
 import os
 import time
+import pathlib
 from collections import namedtuple
 from functools import partial
 
 from . import Task
 from ..efsm import EFSM
-from ..printers import log_br, log_debug, log_error, log_info, log_success
+from ..printers import log_br, log_debug, log_error, log_info, log_success, log_warn
 from ..solver import FileSolver, IncrementalSolver, StreamSolver
 from ..utils import (auto_finalize, closed_range, parse_raw_assignment_algo,
-                     parse_raw_assignment_bool, parse_raw_assignment_int)
+                     parse_raw_assignment_bool, parse_raw_assignment_int, json_dump)
 
 __all__ = ['CompleteAutomatonTask']
 
@@ -20,25 +21,68 @@ class CompleteAutomatonTask(Task):
     Reduction = namedtuple('Reduction', VARIABLES + ' totalizer')
     Assignment = namedtuple('Assignment', VARIABLES + ' C K T P N')
 
-    def __init__(self, scenario_tree, *, C, K=None, P, use_bfs=True, is_distinct=False, is_forbid_or=False, solver_cmd=None, is_incremental=False, is_filesolver=False, outdir=''):
+    def __init__(self, scenario_tree, *, C, K=None, P, use_bfs=True, is_distinct=False, is_forbid_or=False, solver_cmd, is_incremental=False, is_filesolver=False, outdir=None, path_output=None):
+        # TODO: maybe add T_init
         assert C is not None
         assert P is not None
 
         if K is None:
             K = C
 
+        if path_output is None:
+            assert outdir is not None, 'specify either outdir or path_output'
+            path_output = pathlib.Path(outdir)
+        elif outdir is not None:
+            log_warn(f'Ignoring specified outdir <{outdir}>')
+
         self.scenario_tree = scenario_tree
         self.C = C
         self.K = K
         self.P = P
-        self.use_bfs = use_bfs
-        self.is_distinct = is_distinct
-        self.is_forbid_or = is_forbid_or
-        self.outdir = outdir
-        self.is_incremental = is_incremental
-        self.is_filesolver = is_filesolver
+        self.path_output = path_output
+
+        self.params = dict(C=C, K=K, P=P, use_bfs=use_bfs, is_distinct=is_distinct, is_forbid_or=is_forbid_or, solver_cmd=solver_cmd, is_incremental=is_incremental, is_filesolver=is_filesolver, outdir=str(path_output))
+        self.save_params()
+
         self.solver_config = dict(cmd=solver_cmd)
         self._new_solver()
+
+    def save_params(self):
+        path_params = self.path_output / 'info_params.json'
+        json_dump(self.params, path_params)
+
+    def save_results(self, assignment_or_automaton, N, time_total, path_run):
+        A = assignment_or_automaton
+        results = dict(C=self.C, K=self.K, P=self.P, N=N)
+        if A:
+            results = dict(**results,
+                           Cres=A.C, Kres=A.K, Pres=A.P, Tres=A.T, Nres=A.N,
+                           SAT=True, time=time_total)
+        else:
+            results = dict(**results, SAT=False, time=time_total)
+
+        path_results = path_run / 'info_results.json'
+        log_debug(f'Saving results info into <{path_results!s}>...')
+        json_dump(results, path_results)
+
+    def save_efsm(self, efsm, path_run):
+        if efsm is None:
+            return
+
+        C = efsm.C
+        K = efsm.K
+        P = efsm.P
+        T = efsm.T
+        N = efsm.N
+        efsm_info = dict(C=C, K=K, P=P, T=T, N=N)
+
+        path_efsm_info = path_run / 'info_efsm.json'
+        log_debug(f'Saving EFSM info into <{path_efsm_info!s}>...')
+        json_dump(efsm_info, path_efsm_info)
+
+        path_efsm = path_run / f'efsm_C{C}_K{K}_P{P}_T{T}_N{N}'
+        log_debug(f'Dumping EFSM into <{path_efsm!s}>...')
+        efsm.dump(str(path_efsm))
 
     def _new_solver(self):
         self._is_base_declared = False
@@ -47,21 +91,10 @@ class CompleteAutomatonTask(Task):
         if self.is_incremental:
             self.solver = IncrementalSolver(**self.solver_config)
         elif self.is_filesolver:
+            # TODO: use path_output instead of get_filename_prefix
             self.solver = FileSolver(**self.solver_config, filename_prefix=self.get_filename_prefix())
         else:
             self.solver = StreamSolver(**self.solver_config)
-
-    def get_stem(self, N=None):
-        C = self.C
-        K = self.K
-        P = self.P
-        if N is None:
-            return f'complete_{self.scenario_tree.scenarios_stem}_C{C}_K{K}_P{P}'
-        else:
-            return f'complete_{self.scenario_tree.scenarios_stem}_C{C}_K{K}_P{P}_N{N}'
-
-    def get_filename_prefix(self, N=None):
-        return os.path.join(self.outdir, self.get_stem(N))
 
     @property
     def number_of_variables(self):
@@ -77,6 +110,9 @@ class CompleteAutomatonTask(Task):
         # log_debug(f'CompleteAutomatonTask: running for N={N}...')
         time_start_run = time.time()
 
+        path_run = self.path_output / f'run_N{N}'
+        path_run.mkdir(parents=True)
+
         self._declare_base_reduction()
         if N is not None:
             self._declare_totalizer()
@@ -86,15 +122,17 @@ class CompleteAutomatonTask(Task):
         assignment = self.parse_raw_assignment(raw_assignment)
 
         if fast:
-            # log_debug(f'CompleteAutomatonTask: done for N={N} in {time.time() - time_start_run:.2f} s')
+            time_total_run = time.time() - time_start_run
+            self.save_results(assignment, N, time_total_run, path_run)
             return assignment
         else:
             automaton = self.build_efsm(assignment)
-
-            # log_debug(f'CompleteAutomatonTask: done for N={N} in {time.time() - time_start_run:.2f} s')
+            time_total_run = time.time() - time_start_run
+            self.save_results(automaton, N, time_total_run, path_run)
+            self.save_efsm(automaton, path_run)
             log_br()
             if automaton:
-                log_success(f'Complete automaton has {automaton.number_of_states} states, {automaton.number_of_transitions} transitions and {automaton.number_of_nodes} nodes')
+                log_success(f'Complete automaton has {automaton.C} states, {automaton.T} transitions and {automaton.N} nodes')
             else:
                 log_error(f'Complete automaton was not found')
             return automaton
@@ -932,16 +970,13 @@ class CompleteAutomatonTask(Task):
         # log_debug(f'Done building assignment (T={assignment.T}, N={assignment.N}) in {time.time() - time_start_assignment:.2f} s')
         return assignment
 
-    def build_efsm(self, assignment, *, dump=True):
+    def build_efsm(self, assignment):
         if assignment is None:
             return None
 
         log_br()
         log_info('CompleteAutomatonTask: building automaton...')
         automaton = EFSM.new_with_parse_trees(self.scenario_tree, assignment)
-
-        if dump:
-            automaton.dump(self.get_filename_prefix(assignment.N))
 
         log_success('Complete automaton:')
         automaton.pprint()

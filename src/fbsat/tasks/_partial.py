@@ -21,43 +21,48 @@ class PartialAutomatonTask(Task):
     Reduction = namedtuple('Reduction', VARIABLES + ' totalizer')
     Assignment = namedtuple('Assignment', VARIABLES + ' C K T')
 
-    def __init__(self, scenario_tree, *, C, K=None, use_bfs=True, is_distinct=False, solver_cmd=None, is_incremental=False, is_filesolver=False, outdir='', path_output=None):
+    def __init__(self, scenario_tree, *, C, K=None, use_bfs=True, is_distinct=False, solver_cmd=None, is_incremental=False, is_filesolver=False, outdir=None, path_output=None):
         assert C is not None
 
         if K is None:
             K = C
 
         if path_output is None:
-            if outdir == '':
-                raise ValueError('Specify either non-empty outdir or path_output')
+            assert outdir is not None, 'specify either outdir or path_output'
             path_output = pathlib.Path(outdir)
+        elif outdir is not None:
+            log_warn(f'Ignoring specified outdir <{outdir}>')
 
         self.scenario_tree = scenario_tree
         self.C = C
         self.K = K
-        self.use_bfs = use_bfs
-        self.is_distinct = is_distinct
-        self.outdir = outdir
-        self.is_incremental = is_incremental
-        self.is_filesolver = is_filesolver
+        self.path_output = path_output
+
+        self.params = dict(C=C, K=K, use_bfs=use_bfs, is_distinct=is_distinct, solver_cmd=solver_cmd, is_incremental=is_incremental, is_filesolver=is_filesolver, outdir=str(path_output))
+        self.save_params()
+
         self.solver_config = dict(cmd=solver_cmd)
         self._new_solver()
 
-        self.path_output = path_output
-        self.save_params()
-
     def save_params(self):
         path_params = self.path_output / 'info_params.json'
-        params = dict(C=self.C, K=self.K,
-                      use_bfs=self.use_bfs)  # TODO: fill other parameters
-        json_dump(params, path_params)
+        json_dump(self.params, path_params)
 
-    def save_results(self, results, path_run):
+    def save_results(self, assignment_or_automaton, T, time_total, path_run):
+        A = assignment_or_automaton
+        results = dict(C=self.C, K=self.K, T=T)
+        if A:
+            results = dict(**results, Cres=A.C, Kres=A.K, Tres=A.T, SAT=True, time=time_total)
+        else:
+            results = dict(**results, SAT=False, time=time_total)
         path_results = path_run / 'info_results.json'
         log_debug(f'Saving results info into <{path_results!s}>...')
         json_dump(results, path_results)
 
     def save_efsm(self, efsm, path_run):
+        if efsm is None:
+            return
+
         C = efsm.C
         K = efsm.K
         T = efsm.T
@@ -122,28 +127,13 @@ class PartialAutomatonTask(Task):
 
         if fast:
             time_total_run = time.time() - time_start_run
-            if assignment:
-                results = dict(Cres=assignment.C, Kres=assignment.K, Tres=assignment.T,
-                               SAT=True, time=time_total_run)
-            else:
-                results = dict(SAT=False, time=time_total_run)
-            self.save_results(results, path_run)
-
-            # log_debug(f'PartialAutomatonTask: done for T={T} in {time_total_run:.2f} s')
+            self.save_results(assignment, T, time_total_run, path_run)
             return assignment
         else:
-            # automaton = self.build_efsm(assignment)
-            automaton = self.build_efsm(assignment, dump=False)
+            automaton = self.build_efsm(assignment)
             time_total_run = time.time() - time_start_run
-            if automaton:
-                results = dict(Cres=automaton.C, Kres=automaton.K, Tres=automaton.T,
-                               SAT=True, time=time_total_run)
-            else:
-                results = dict(SAT=False, time=time_total_run)
-            self.save_results(results, path_run)
+            self.save_results(automaton, time_total_run, path_run)
             self.save_efsm(automaton, path_run)
-
-            # log_debug(f'PartialAutomatonTask: done for T={T} in {time_total_run:.2f} s')
             log_br()
             if automaton:
                 log_success(f'Partial automaton has {automaton.number_of_states} states and {automaton.number_of_transitions} transitions')
@@ -544,16 +534,13 @@ class PartialAutomatonTask(Task):
         # log_debug(f'Done building assignment (T={assignment.T}) in {time.time() - time_start_assignment:.2f} s')
         return assignment
 
-    def build_efsm(self, assignment, *, dump=True):
+    def build_efsm(self, assignment):
         if assignment is None:
             return None
 
         log_br()
         log_info('PartialAutomatonTask: building automaton...')
         automaton = EFSM.new_with_truth_tables(self.scenario_tree, assignment)
-
-        if dump:
-            automaton.dump(self.get_filename_prefix(assignment.T))
 
         log_success('Partial automaton:')
         automaton.pprint()

@@ -1,41 +1,154 @@
 import os
 import time
+import pathlib
 
 from . import CompleteAutomatonTask, MinimalPartialAutomatonTask, Task
 from ..efsm import EFSM
-from ..printers import log_br, log_debug, log_error, log_info, log_success
+from ..printers import log_br, log_debug, log_error, log_info, log_success, log_warn
+from ..utils import json_dump
 
 __all__ = ['MinimalCompleteAutomatonTask']
 
 
 class MinimalCompleteAutomatonTask(Task):
 
-    def __init__(self, scenario_tree, *, C=None, K=None, P, N=None, use_bfs=True, is_distinct=False, is_forbid_or=False, solver_cmd=None, is_incremental=False, is_filesolver=False, outdir=''):
+    def __init__(self, scenario_tree, *, C=None, K=None, P, N_init=None, use_bfs=True, is_distinct=False, is_forbid_or=False, solver_cmd=None, is_incremental=False, is_filesolver=False, outdir=None, path_output=None):
+        assert P is not None
+
+        if path_output is None:
+            assert outdir is not None, 'specify either outdir or path_output'
+            path_output = pathlib.Path(outdir)
+        elif outdir is not None:
+            log_warn(f'Ignoring specified outdir <{outdir}>')
+
         self.scenario_tree = scenario_tree
         self.C = C
         self.K = K
         self.P = P
-        self.N_init = N
-        self.outdir = outdir
+        self.N_init = N_init
+        self.path_output = path_output
         self.subtask_config_minpartial = dict(scenario_tree=scenario_tree,
                                               use_bfs=use_bfs,
                                               solver_cmd=solver_cmd,
                                               is_incremental=is_incremental,
-                                              is_filesolver=is_filesolver,
-                                              outdir=outdir)
+                                              is_filesolver=is_filesolver)
         self.subtask_config_complete = dict(**self.subtask_config_minpartial,
-                                            P=self.P,
                                             is_distinct=is_distinct,
                                             is_forbid_or=is_forbid_or)
 
-    def get_stem(self, C, K, P, N=None):
-        if N is None:
-            return f'minimal_complete_{self.scenario_tree.scenarios_stem}_C{C}_K{K}_P{P}'
-        else:
-            return f'minimal_complete_{self.scenario_tree.scenarios_stem}_C{C}_K{K}_P{P}_N{N}'
+        self.subtask_config = dict(scenario_tree=scenario_tree,
+                                   use_bfs=use_bfs,
+                                   is_distinct=is_distinct,
+                                   solver_cmd=solver_cmd,
+                                   is_incremental=is_incremental,
+                                   is_filesolver=is_filesolver)
 
-    def get_filename_prefix(self, C, K, P, N=None):
-        return os.path.join(self.outdir, self.get_stem(C, K, P, N))
+        self.params = dict(C=C, K=K, N_init=N_init, use_bfs=use_bfs, is_distinct=is_distinct, solver_cmd=solver_cmd, is_incremental=is_incremental, is_filesolver=is_filesolver, outdir=str(path_output))
+        self.save_params()
+
+        self.path_intermediate = self.path_output / 'intermediate'
+        self.path_intermediate.mkdir(parents=True)
+        self.intermediate_calls = []
+
+    def save_params(self):
+        path_params = self.path_output / 'info_params.json'
+        json_dump(self.params, path_params)
+
+    def save_results(self, assignment_or_automaton, time_total):
+        A = assignment_or_automaton
+        results = dict(C=self.C, K=self.K, P=self.P, N_init=self.N_init)
+        if A:
+            results = dict(**results,
+                           Cres=A.C, Kres=A.K, Pres=A.P, Tres=A.T, Nres=A.N,
+                           SAT=True, time=time_total)
+        else:
+            results = dict(**results, SAT=False, time=time_total)
+
+        path_results = self.path_output / 'info_results.json'
+        log_debug(f'Saving results info into <{path_results!s}>...')
+        json_dump(results, path_results)
+
+        path_calls = self.path_intermediate / 'info_calls.json'
+        log_debug(f'Saving intermediate calls info into <{path_calls}>...')
+        json_dump(self.intermediate_calls, path_calls)
+
+    def save_efsm(self, efsm):
+        if efsm is None:
+            return
+
+        C = efsm.C
+        K = efsm.K
+        T = efsm.T
+        efsm_info = dict(C=C, K=K, T=T)
+
+        path_efsm_info = self.path_output / 'info_efsm.json'
+        log_debug(f'Saving EFSM info into <{path_efsm_info!s}>...')
+        json_dump(efsm_info, path_efsm_info)
+
+        path_efsm = self.path_output / f'efsm_C{C}_K{K}_T{T}'
+        log_debug(f'Dumping EFSM into <{path_efsm!s}>...')
+        efsm.dump(str(path_efsm))
+
+    def create_basic_min_subtask_call(self, C, K):
+        call_name = 'basic-min-onlyC'
+        path_call = self.path_intermediate / f'{len(self.intermediate_calls):0>4}_{call_name}_C{C}_K{K}'
+        path_call.mkdir(parents=True)
+
+        config = dict(C=C, K=K, path_output=path_call, **self.subtask_config_minpartial)
+        task = MinimalPartialAutomatonTask(**config)
+
+        def subtask_call():
+            time_start_call = time.time()
+            assignment = task.run(fast=True, only_C=True)
+            time_total_call = time.time() - time_start_call
+
+            if assignment:
+                call_results = dict(C=assignment.C, K=assignment.K, P=assignment.P,
+                                    T=assignment.T, N=assignment.N,
+                                    SAT=True, time=time_total_call)
+            else:
+                call_results = dict(SAT=False, time=time_total_call)
+
+            call_info = dict(call=call_name,
+                             params=dict(C=C, K=K),
+                             results=call_results)
+            self.intermediate_calls.append(call_info)
+
+            return assignment
+
+        return subtask_call
+
+    def create_extended_subtask_call(self, C, K, P):
+        call_name = 'extended'
+        path_call = self.path_intermediate / f'{len(self.intermediate_calls):0>4}_{call_name}_C{C}_K{K}_P{P}'
+        path_call.mkdir(parents=True)
+
+        config = dict(**self.subtask_config_complete, C=C, K=K, P=P, path_output=path_call)
+        task = CompleteAutomatonTask(**config)
+
+        def subtask_call(N):
+            time_start_call = time.time()
+            assignment = task.run(N, fast=True, finalize=False)
+            time_total_call = time.time() - time_start_call
+
+            if assignment:
+                call_results = dict(C=assignment.C, K=assignment.K, P=assignment.P,
+                                    T=assignment.T, N=assignment.N,
+                                    SAT=True, time=time_total_call)
+            else:
+                call_results = dict(SAT=False, time=time_total_call)
+
+            call_info = dict(call=call_name,
+                             params=dict(C=C, K=K, P=P, N=N),
+                             results=call_results)
+            self.intermediate_calls.append(call_info)
+
+            return assignment
+
+        def subtask_finalize():
+            task.finalize()
+
+        return subtask_call, subtask_finalize
 
     def run(self, *, fast=False):
         log_debug(f'MinimalCompleteAutomatonTask: running...')
@@ -44,8 +157,8 @@ class MinimalCompleteAutomatonTask(Task):
 
         if self.C is None:
             log_debug('MinimalCompleteAutomatonTask: searching for minimal C...')
-            task = MinimalPartialAutomatonTask(**self.subtask_config_minpartial)
-            assignment = task.run(fast=True, only_C=True)
+            task_call = self.create_basic_min_subtask_call()
+            assignment = task_call()
             C = assignment.C
             log_debug(f'MinimalCompleteAutomatonTask: found minimal C={C}')
         else:
@@ -59,57 +172,42 @@ class MinimalCompleteAutomatonTask(Task):
             K = self.K
             # log_debug(f'MinimalCompleteAutomatonTask: using specified K={K}')
 
-        task = CompleteAutomatonTask(C=C, K=K, **self.subtask_config_complete)
-        assignment = task.run(self.N_init, fast=True, finalize=False)
+        task_call, task_finalize = self.create_extended_subtask_call(C, K, self.P)
+        assignment = task_call(self.N_init)
 
-        # ====================
-        # self.intermediate = []
-        # ====================
         while assignment:
             best = assignment
-            # ============================
-            # _best_automaton = self.build_efsm(best, dump=False)
-            # self.intermediate.append(_best_automaton)
-            # ============================
             N = best.N - 1
             log_br()
             log_info(f'Trying N = {N}...')
-            assignment = task.run(N, fast=True, finalize=False)
+            assignment = task_call(N)
 
-        task.finalize()
+        task_finalize()
 
         if fast:
-            log_debug(f'MinimalCompleteAutomatonTask: done in {time.time() - time_start_run:.2f} s')
+            time_total_run = time.time() - time_start_run
+            self.save_results(best, time_total=time_total_run)
             return best
         else:
             automaton = self.build_efsm(best)
+            time_total_run = time.time() - time_start_run
+            self.save_results(automaton, time_total=time_total_run)
+            self.save_efsm(automaton)
 
-            log_debug(f'MinimalCompleteAutomatonTask: done in {time.time() - time_start_run:.2f} s')
             log_br()
             if automaton:
-                log_success(f'Minimal complete automaton has {automaton.number_of_states} states, {automaton.number_of_transitions} transitions and {automaton.number_of_nodes} nodes')
+                log_success(f'Minimal complete automaton has {automaton.C} states, {automaton.T} transitions and {automaton.N} nodes')
             else:
                 log_error(f'Minimal complete automaton was not found')
             return automaton
 
-        log_debug(f'MinimalCompleteAutomatonTask: done in {time.time() - time_start_run:.2f} s')
-        log_br()
-        if automaton:
-            log_success('')
-        else:
-            log_error('')
-        return automaton
-
-    def build_efsm(self, assignment, *, dump=True):
+    def build_efsm(self, assignment):
         if assignment is None:
             return None
 
         log_br()
         log_info('MinimalCompleteAutomatonTask: building automaton...')
         automaton = EFSM.new_with_parse_trees(self.scenario_tree, assignment)
-
-        if dump:
-            automaton.dump(self.get_filename_prefix(assignment.C, assignment.K, assignment.P, assignment.N))
 
         log_success('Minimal complete automaton:')
         automaton.pprint()
