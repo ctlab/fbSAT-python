@@ -7,17 +7,17 @@ import time
 import click
 
 from fbsat.printers import *
-from fbsat.scenario import ScenarioTree, Scenario
+from fbsat.scenario import ScenarioTree
 
 
 @click.command(context_settings=dict(
     max_content_width=999,
     help_option_names=['-h', '--help']
 ))
-@click.option('-i', '--input', '--efsm', 'indir', metavar='<path>',
+@click.option('-i', '--intput', 'indir', metavar='<path>',
               type=click.Path(exists=True, file_okay=False), required=True,
-              help='Input folder with EFSM (e.g., simulation/efsm')
-@click.option('-o', '--output', '--outdir', 'outdir', metavar='<path>',
+              help='Input folder with EFSM (e.g., simulation/efsm)')
+@click.option('-o', '--output', 'outdir', metavar='<path>',
               type=click.Path(writable=True, file_okay=False), required=True,
               help='Output folder for simulated scenarios (e.g., simulation/replica0/scenarios)')
 @click.option('--n-scenarios', 'number_of_scenarios', metavar='<int>',

@@ -15,7 +15,7 @@ from fbsat.utils import closed_range
     max_content_width=999,
     help_option_names=['-h', '--help']
 ))
-@click.option('-o', '--output', '--outdir', 'outdir', metavar='<path>',
+@click.option('-o', '--output', 'outdir', metavar='<path>',
               type=click.Path(writable=True, file_okay=False), required=True,
               help='Output folder for generated EFSM (e.g. simulation/efsm')
 @click.option('-C', 'C', type=int, metavar='<int>', required=True,
@@ -114,7 +114,7 @@ def cli(outdir, C, K, E, O, X, Z, P, input_events, output_events, input_names, o
     efsm.pprint()
 
     # Dump efsm
-    path_efsm = path_output/ f'efsm_random_C{efsm.C}_K{efsm.K}_P{efsm.P}_T{efsm.T}_N{efsm.N}'
+    path_efsm = path_output / f'efsm_random_C{efsm.C}_K{efsm.K}_P{efsm.P}_T{efsm.T}_N{efsm.N}'
     efsm.dump(str(path_efsm))
 
     # Save efsm info

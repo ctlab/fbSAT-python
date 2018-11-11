@@ -14,10 +14,10 @@ from fbsat.tasks import *
     max_content_width=999,
     help_option_names=['-h', '--help']
 ))
-@click.option('-i', '--input', '--scenarios', 'indir', metavar='<path>',
+@click.option('-i', '--input', 'indir', metavar='<path>',
               type=click.Path(exists=True, file_okay=False), required=True,
               help='Input folder with scenarios (e.g., simulation/replica0/scenarios')
-@click.option('-o', '--output', '--outdir', 'outdir', metavar='<path>',
+@click.option('-o', '--output', 'outdir', metavar='<path>',
               type=click.Path(writable=True, file_okay=False), required=True,
               help='Output folder for evaluation results (e.g., simulation/replica0/out/<method>)')
 @click.option('--method', metavar='<method>', required=True,
