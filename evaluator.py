@@ -1,13 +1,14 @@
 import json
 import pathlib
 import pickle
-import shutil
 import time
 
 import click
 
 from fbsat.printers import *
 from fbsat.tasks import *
+
+from pathutils import ensure_dir
 
 
 @click.command(context_settings=dict(
@@ -53,37 +54,25 @@ from fbsat.tasks import *
               help='Use IncrementalSolver backend')
 @click.option('--filesolver', 'is_filesolver', is_flag=True,
               help='Use FileSolver backend')
-@click.option('--force-write', 'is_force_write', is_flag=True,
-              help='Write in existing output folder')
-@click.option('--force-remove', 'is_force_remove', is_flag=True,
-              help='Remove existing output folder')
+@click.option('--exist-err', 'exist', flag_value='error', default=True,
+              help='Disallow writing in existing folder')
+@click.option('--exist-ok', 'exist', flag_value='ok',
+              help='Allow writing in existing folder')
+@click.option('--exist-rm', 'exist', flag_value='remove-all',
+              help='Remove everything in existing folder')
+@click.option('--exist-rm-files', 'exist', flag_value='remove-files',
+              help='Remove all files in existing folder recursively')
+@click.option('--exist-re', 'exist', flag_value='recreate',
+              help='Recreate existing folder')
 def cli(indir, outdir, method, C, K, P, T, N, w, use_bfs, is_distinct, is_forbid_or,
-        sat_solver, is_incremental, is_filesolver, is_force_write, is_force_remove):
+        sat_solver, is_incremental, is_filesolver, exist):
     time_start_evaluate = time.time()
 
     path_input = pathlib.Path(indir)
     assert path_input.is_dir()
 
-    # Ensure output folder exists and maybe recreate it or throw an error
     path_output = pathlib.Path(outdir)
-    if not path_output.exists():
-        log_debug(f'Creating output folder <{path_output}>...')
-        path_output.mkdir(parents=True)
-    else:
-        assert path_output.is_dir()
-        if is_force_write:
-            pass
-        elif is_force_remove:
-            log_warn(f'Clearing output folder <{path_output}>...')
-            for child in path_output.iterdir():
-                if child.is_dir():
-                    shutil.rmtree(str(child))
-                elif child.is_file():
-                    child.unlink()
-                else:
-                    log_warn(f'Neither a directory nor a file: {child}')
-        else:
-            raise click.BadParameter('folder already exists, consider --force-write or --force-remove', param_hint='output')
+    ensure_dir(path_output, exist)
 
     # Load scenarios info
     path_scenarios_info = path_input / 'info_scenarios.json'

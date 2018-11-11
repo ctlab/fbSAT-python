@@ -1,6 +1,5 @@
 import json
 import pathlib
-import shutil
 import string
 import time
 
@@ -9,6 +8,8 @@ import click
 from fbsat.efsm import EFSM
 from fbsat.printers import *
 from fbsat.utils import closed_range
+
+from pathutils import ensure_dir
 
 
 @click.command(context_settings=dict(
@@ -28,10 +29,10 @@ from fbsat.utils import closed_range
 @click.option('-O', 'O', type=int, metavar='<int>',
               default=1, show_default=True,
               help='Number of output events')
-@click.option('-X', 'X', type=int, metavar='<int>', required=True,
+@click.option('-X', 'X', type=int, metavar='<int>',
               default=2, show_default=True,
               help='Number of input variables')
-@click.option('-Z', 'Z', type=int, metavar='<int>', required=True,
+@click.option('-Z', 'Z', type=int, metavar='<int>',
               default=2, show_default=True,
               help='Number of output variables')
 @click.option('-P', 'P', type=int, metavar='<int>',
@@ -45,35 +46,21 @@ from fbsat.utils import closed_range
               help='Comma-separated list of input variables')
 @click.option('--output-names', metavar='<vars...>',
               help='Comma-separated list of output variables')
-@click.option('--force-write', 'is_force_write', is_flag=True,
-              help='Write in existing output folder')
-@click.option('--force-remove', 'is_force_remove', is_flag=True,
-              help='Remove existing output folder')
-def cli(outdir, C, K, E, O, X, Z, P, input_events, output_events, input_names, output_names,
-        is_force_write, is_force_remove):
+@click.option('--exist-err', 'exist', flag_value='error', default=True,
+              help='Disallow writing in existing folder')
+@click.option('--exist-ok', 'exist', flag_value='ok',
+              help='Allow writing in existing folder')
+@click.option('--exist-rm', 'exist', flag_value='remove-all',
+              help='Remove everything in existing folder')
+@click.option('--exist-rm-files', 'exist', flag_value='remove-files',
+              help='Remove all files in existing folder recursively')
+@click.option('--exist-re', 'exist', flag_value='recreate',
+              help='Recreate existing folder')
+def cli(outdir, C, K, E, O, X, Z, P, input_events, output_events, input_names, output_names, exist):
     time_start_generate = time.time()
 
-    # Ensure output folder exists and maybe recreate it or throw an error
     path_output = pathlib.Path(outdir)
-    if not path_output.exists():
-        log_debug(f'Creating output folder <{path_output}>...')
-        path_output.mkdir(parents=True)
-    else:
-        assert path_output.is_dir()
-        if is_force_write:
-            pass
-        elif is_force_remove:
-            log_warn(f'Recreating output folder <{path_output}>...')
-            for child in path_output.iterdir():
-                if child.is_dir():
-                    shutil.rmtree(str(child))
-                elif child.is_file():
-                    child.unlink()
-                else:
-                    log_warn(f'Neither a directory nor a file: {child}')
-        else:
-            log_error('Output folder already exists, use --force-write or --force-remove')
-            return
+    ensure_dir(path_output, exist)
 
     assert C >= 1
 
