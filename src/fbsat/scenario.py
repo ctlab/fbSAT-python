@@ -149,8 +149,11 @@ class Scenario:
 
 class ScenarioTree(treelib.Tree):
 
-    def __init__(self, scenarios, *, is_trie=True):
+    def __init__(self, scenarios, *, preprocess=True, is_trie=True):
         super().__init__()
+
+        if preprocess:
+            scenarios = Scenario.preprocess_scenarios(scenarios)
 
         self.number_of_scenarios = len(scenarios)
 
@@ -259,9 +262,7 @@ class ScenarioTree(treelib.Tree):
     @staticmethod
     def from_files(filename_scenarios, filename_input_names, filename_output_names, preprocess=True):
         scenarios = Scenario.read_scenarios(filename_scenarios)
-        if preprocess:
-            scenarios = Scenario.preprocess_scenarios(scenarios)
-        tree = ScenarioTree(scenarios)
+        tree = ScenarioTree(scenarios, preprocess=preprocess)
 
         input_names = read_names(filename_input_names)
         # Fix input_variable names if mismatch

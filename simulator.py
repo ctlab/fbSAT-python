@@ -90,9 +90,6 @@ def cli(indir, outdir, number_of_scenarios, scenario_length, is_force_write, is_
                                           X=len(input_names), Z=len(output_names)))
     _elements_uncompressed = sum(map(len, scenarios))
 
-    # Preprocess scenarios
-    scenarios = Scenario.preprocess_scenarios(scenarios)
-
     # Build scenario tree
     scenario_tree = ScenarioTree(scenarios)
     scenario_tree.scenarios_filename = 'simulated'
