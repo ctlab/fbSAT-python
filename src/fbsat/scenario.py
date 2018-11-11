@@ -149,11 +149,16 @@ class Scenario:
 
 class ScenarioTree(treelib.Tree):
 
-    def __init__(self, scenarios, *, preprocess=True, is_trie=True):
+    def __init__(self, scenarios, input_names=None, output_names=None, *, preprocess=True, is_trie=True):
         super().__init__()
 
         if preprocess:
             scenarios = Scenario.preprocess_scenarios(scenarios)
+
+        if input_names:
+            self.input_names = input_names
+        if output_names:
+            self.output_names = output_names
 
         self.number_of_scenarios = len(scenarios)
 
@@ -267,16 +272,15 @@ class ScenarioTree(treelib.Tree):
         input_names = read_names(filename_input_names)
         # Fix input_variable names if mismatch
         if len(input_names) != tree.X:
-            input_names = [f'x{i+1}' for i in range(tree.X)]
+            input_names = tree.input_names
             log_warn('input_names are fixed due to mismatch: ' + ','.join(input_names))
 
         output_names = read_names(filename_output_names)
         # Fix output variable names if mismatch
         if len(output_names) != tree.Z:
-            output_names = [f'z{i+1}' for i in range(tree.Z)]
+            output_names = tree.output_names
             log_warn('output_names are fixed due to mismatch: ' + ','.join(output_names))
 
-        tree.scenarios_filename = filename_scenarios
         tree.input_names = input_names
         tree.output_names = output_names
 

@@ -91,12 +91,8 @@ def cli(indir, outdir, number_of_scenarios, scenario_length, is_force_write, is_
     _elements_uncompressed = sum(map(len, scenarios))
 
     # Build scenario tree
-    scenario_tree = ScenarioTree(scenarios)
-    scenario_tree.scenarios_filename = 'simulated'
-    scenario_tree.input_names = input_names
-    scenario_tree.output_names = output_names
-    log_debug(f'ScenarioTree size: {scenario_tree.size()}')
-    # scenario_tree.pprint(n=10)
+    scenario_tree = ScenarioTree(scenarios, input_names, output_names)
+    log_debug(f'Scenario tree size: {scenario_tree.size()}')
 
     # Verify simulated scenarios
     efsm.verify(scenario_tree)
