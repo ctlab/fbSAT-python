@@ -6,5 +6,5 @@ __all__ = ['Task']
 class Task(ABC):
 
     @abstractmethod
-    def run(self):
+    def run(self, *args, **kwargs):
         pass
