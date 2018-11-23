@@ -1,12 +1,14 @@
-import os
 import json
+import gzip
+import pathlib
 from functools import wraps
 
 import click
 
 from .printers import log_debug, log_warn
 
-__all__ = ['NotBool', 'closed_range', 'open_maybe_gzip', 'read_names', 'algorithm2st', 'b2s', 's2b',
+__all__ = ['NotBool', 'closed_range', 'open_maybe_gzip', 'parse_names',
+           'algorithm2st', 'b2s', 's2b',
            'parse_raw_assignment_algo', 'parse_raw_assignment_bool', 'parse_raw_assignment_int',
            'auto_finalize', 'json_dump']
 
@@ -30,19 +32,25 @@ def closed_range(start, stop=None, step=1):
 
 
 def open_maybe_gzip(filename):
-    if os.path.splitext(filename)[1] == '.gz':
-        import gzip
+    if filename.endswith('.gz'):
         return gzip.open(filename, 'rt')
     else:
         return click.open_file(filename)
 
 
-def read_names(filename):
-    log_debug(f'Reading names from <{click.format_filename(filename)}>...')
-    with open_maybe_gzip(filename) as f:
-        names = f.read().strip().split('\n')
-    log_debug(f'Done reading names: {", ".join(names)}')
-    return names
+def parse_names(ctx, param, value):
+    if value:
+        path = pathlib.Path(value)
+        if path.is_file():
+            log_debug(f'Reading names from <{path}>...')
+
+            with open_maybe_gzip(str(path)) as f:
+                names = f.read().strip().split()
+
+            log_debug(f'Done reading names: {", ".join(names)}')
+            return names
+        else:
+            return value.split(',')
 
 
 def algorithm2st(output_variable_names, algorithm_0, algorithm_1):
