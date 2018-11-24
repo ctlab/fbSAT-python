@@ -494,14 +494,13 @@ class EFSM:
                         # guard = ParseTreeGuard.from_input(unique_input[u], names=tree.input_names)
                         efsm.add_transition(c, dest, input_events[e - 1], guard)
 
-        if efsm.number_of_states != assignment.C:
-            log_error(f'Inequal number of states: efsm has {efsm.number_of_states}, assignment has {assignment.C}')
-        if efsm.number_of_transitions != assignment.T:
-            log_error(f'Inequal number of transitions: efsm has {efsm.number_of_transitions},'
-                      f' assignment has {assignment.T}')
+        if efsm.C != assignment.C:
+            log_error(f'Inequal number of states: efsm has {efsm.C}, assignment has {assignment.C}')
+        if efsm.T != assignment.T:
+            log_error(f'Inequal number of transitions: efsm has {efsm.T}, assignment has {assignment.T}')
 
-        log_debug(f'Done building EFSM with {efsm.number_of_states} states and'
-                  f' {efsm.number_of_transitions} transitions in {time.time() - time_start_build:.2f} s')
+        log_debug(f'Done building EFSM with {efsm.C} states and {efsm.T} transitions'
+                  f' in {time.time() - time_start_build:.2f} s')
         return efsm
 
     @classmethod
@@ -543,15 +542,13 @@ class EFSM:
                         guard = TruthTableGuard(truth_table, unique_inputs)
                         efsm.add_transition(c, dest, input_event, guard)
 
-        if efsm.number_of_states != assignment.C:
-            log_error(f'Inequal number of states: efsm has {efsm.number_of_states},'
-                      f' assignment has {assignment.C}')
-        if efsm.number_of_transitions != assignment.T:
-            log_error(f'Inequal number of transitions: efsm has {efsm.number_of_transitions},'
-                      f' assignment has {assignment.T}')
+        if efsm.C != assignment.C:
+            log_error(f'Inequal number of states: efsm has {efsm.C}, assignment has {assignment.C}')
+        if efsm.T != assignment.T:
+            log_error(f'Inequal number of transitions: efsm has {efsm.T}, assignment has {assignment.T}')
 
-        log_debug(
-                f'Done building EFSM with {efsm.number_of_states} states and {efsm.number_of_transitions} transitions in {time.time() - time_start_build:.2f} s')
+        log_debug(f'Done building EFSM with {efsm.C} states and {efsm.T} transitions'
+                  f' in {time.time() - time_start_build:.2f} s')
         return efsm
 
     @classmethod
@@ -588,7 +585,7 @@ class EFSM:
                                                names=tree.input_names)
                         efsm.add_transition(c, dest, input_event, guard)
 
-        if efsm.N != assignment.C:
+        if efsm.C != assignment.C:
             log_error(f'Inequal number of states: efsm has {efsm.C}, assignment has {assignment.C}')
         if efsm.T != assignment.T:
             log_error(f'Inequal number of transitions: efsm has {efsm.T}, assignment has {assignment.T}')
