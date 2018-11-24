@@ -1,5 +1,4 @@
 import itertools
-import os
 import time
 
 import click
@@ -69,8 +68,8 @@ class ScenarioElement:
         return f'{self.input_event}({self.input_values})->{self.output_actions[0]}'
 
     def __repr__(self):
-        return f'ScenarioElement(input_event={self.input_event}, input_values={self.input_values},' \
-               f' output_actions={self.output_actions})'
+        return (f'ScenarioElement(input_event={self.input_event},'
+                f' input_values={self.input_values}, output_actions={self.output_actions})')
 
 
 class Scenario:
@@ -285,13 +284,6 @@ class ScenarioTree(treelib.Tree):
                 self.V_active_eu[e][u].append(v)
             else:
                 self.V_passive_eu[e][u].append(v)
-
-    @property
-    def scenarios_stem(self):
-        if hasattr(self, 'scenarios_filename'):
-            return os.path.splitext(os.path.basename(self.scenarios_filename))[0]
-        else:
-            return 'unknown'
 
     def pprint(self, n=None):
         log_debug('Scenario tree:')

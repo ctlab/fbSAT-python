@@ -1,7 +1,6 @@
 import os
 import pickle
 import random
-import string
 import time
 from abc import ABC, abstractmethod
 from collections import OrderedDict
@@ -88,7 +87,6 @@ class TruthTableGuard(Guard):
 
 
 class ParseTreeGuard(Guard):
-
     class Node:
 
         names = None
@@ -366,7 +364,6 @@ class ParseTreeGuard(Guard):
 
 
 class EFSM:
-
     class State:
 
         class Transition:
@@ -392,10 +389,10 @@ class EFSM:
                 return f'{self.input_event}&{self.guard.__str_fbt__()}'
 
             def __str_smv_destination__(self):
-                return(f'_state={self.source.__str_smv__()}'
-                       f' & {self.input_event}'
-                       f' & ({self.guard.__str_smv__()})'
-                       f' : {self.destination.__str_smv__()};')
+                return (f'_state={self.source.__str_smv__()}'
+                        f' & {self.input_event}'
+                        f' & ({self.guard.__str_smv__()})'
+                        f' : {self.destination.__str_smv__()};')
 
             def __str_smv_output_event__(self):
                 return (f'_state={self.source.__str_smv__()}'
@@ -438,7 +435,8 @@ class EFSM:
             return f'{self.id}/{self.output_event}(0:{self.algorithm_0}, 1:{self.algorithm_1})'
 
         def __str_gv__(self):
-            return f'{self.id} [label="<p>{self.id}|{self.output_event}|{{0:{self.algorithm_0}|1:{self.algorithm_1}}}" shape=Mrecord]'
+            return (f'{self.id} [label="<p>{self.id}|{self.output_event}|'
+                    f'{{0:{self.algorithm_0}|1:{self.algorithm_1}}}" shape=Mrecord]')
             # return f'{self.id} [label=<\n<TABLE CELLBORDER="1" CELLSPACING="0" STYLE="ROUNDED">\n<TR>\n    <TD WIDTH="30" PORT="p">{self.id}</TD>\n    <TD>{self.output_event}</TD>\n<TD BALIGN="LEFT">0:{self.algorithm_0}<BR/>1:{self.algorithm_1}</TD>\n</TR>\n</TR>\n</TABLE>> shape=plaintext]'
             # return f'{self.id} [label="{self.id}:{self.output_event}({self.algorithm_0}_{self.algorithm_1})"]'
 
@@ -449,7 +447,8 @@ class EFSM:
             return f's{self.id}_{self.algorithm_0}_{self.algorithm_1}'
 
         def __repr__(self):
-            return f'State(id={self.id!r}, output_event={self.output_event!r}, algorithm_0={self.algorithm_0!r}, algorithm_1={self.algorithm_1!r})'
+            return (f'State(id={self.id!r}, output_event={self.output_event!r},'
+                    f' algorithm_0={self.algorithm_0!r}, algorithm_1={self.algorithm_1!r})')
 
     def __init__(self, input_events, output_events, input_names, output_names):
         self.states = OrderedDict()
@@ -474,7 +473,7 @@ class EFSM:
         C = assignment.C
         E = tree.E
         U = tree.U
-        input_events = tree.input_events    # [str]^E  0-based
+        input_events = tree.input_events  # [str]^E  0-based
         output_events = tree.output_events  # [str]^O  0-based
         unique_input = tree.unique_input  # [1..U, 1..X]:bool
 
@@ -498,9 +497,11 @@ class EFSM:
         if efsm.number_of_states != assignment.C:
             log_error(f'Inequal number of states: efsm has {efsm.number_of_states}, assignment has {assignment.C}')
         if efsm.number_of_transitions != assignment.T:
-            log_error(f'Inequal number of transitions: efsm has {efsm.number_of_transitions}, assignment has {assignment.T}')
+            log_error(f'Inequal number of transitions: efsm has {efsm.number_of_transitions},'
+                      f' assignment has {assignment.T}')
 
-        log_debug(f'Done building EFSM with {efsm.number_of_states} states and {efsm.number_of_transitions} transitions in {time.time() - time_start_build:.2f} s')
+        log_debug(f'Done building EFSM with {efsm.number_of_states} states and'
+                  f' {efsm.number_of_transitions} transitions in {time.time() - time_start_build:.2f} s')
         return efsm
 
     @classmethod
@@ -513,7 +514,7 @@ class EFSM:
         K = assignment.K
         E = tree.E
         U = tree.U
-        input_events = tree.input_events    # [str]^E  0-based
+        input_events = tree.input_events  # [str]^E  0-based
         output_events = tree.output_events  # [str]^O  0-based
         unique_inputs = tree.unique_inputs  # [str]^U  0-based
 
@@ -543,11 +544,14 @@ class EFSM:
                         efsm.add_transition(c, dest, input_event, guard)
 
         if efsm.number_of_states != assignment.C:
-            log_error(f'Inequal number of states: efsm has {efsm.number_of_states}, assignment has {assignment.C}')
+            log_error(f'Inequal number of states: efsm has {efsm.number_of_states},'
+                      f' assignment has {assignment.C}')
         if efsm.number_of_transitions != assignment.T:
-            log_error(f'Inequal number of transitions: efsm has {efsm.number_of_transitions}, assignment has {assignment.T}')
+            log_error(f'Inequal number of transitions: efsm has {efsm.number_of_transitions},'
+                      f' assignment has {assignment.T}')
 
-        log_debug(f'Done building EFSM with {efsm.number_of_states} states and {efsm.number_of_transitions} transitions in {time.time() - time_start_build:.2f} s')
+        log_debug(
+                f'Done building EFSM with {efsm.number_of_states} states and {efsm.number_of_transitions} transitions in {time.time() - time_start_build:.2f} s')
         return efsm
 
     @classmethod
@@ -559,7 +563,7 @@ class EFSM:
         C = assignment.C
         K = assignment.K
         E = tree.E
-        input_events = tree.input_events    # [str]^E  0-based
+        input_events = tree.input_events  # [str]^E  0-based
         output_events = tree.output_events  # [str]^O  0-based
 
         efsm = cls.new_from_scenario_tree(scenario_tree)
@@ -584,18 +588,20 @@ class EFSM:
                                                names=tree.input_names)
                         efsm.add_transition(c, dest, input_event, guard)
 
-        if efsm.number_of_states != assignment.C:
-            log_error(f'Inequal number of states: efsm has {efsm.number_of_states}, assignment has {assignment.C}')
-        if efsm.number_of_transitions != assignment.T:
-            log_error(f'Inequal number of transitions: efsm has {efsm.number_of_transitions}, assignment has {assignment.T}')
-        if efsm.number_of_nodes != assignment.N:
-            log_error(f'Inequal number of nodes: efsm has {efsm.number_of_nodes}, assignment has {assignment.N}')
+        if efsm.N != assignment.C:
+            log_error(f'Inequal number of states: efsm has {efsm.C}, assignment has {assignment.C}')
+        if efsm.T != assignment.T:
+            log_error(f'Inequal number of transitions: efsm has {efsm.T}, assignment has {assignment.T}')
+        if efsm.N != assignment.N:
+            log_error(f'Inequal number of nodes: efsm has {efsm.N}, assignment has {assignment.N}')
 
-        log_debug(f'Done building EFSM with {efsm.number_of_states} states, {efsm.number_of_transitions} transitions and {efsm.number_of_nodes} nodes in {time.time() - time_start_build:.2f} s')
+        log_debug(f'Done building EFSM with {efsm.C} states, {efsm.T} transitions'
+                  f' and {efsm.N} nodes in {time.time() - time_start_build:.2f} s')
         return efsm
 
     @classmethod
-    def new_random(cls, C, K, P, input_events, output_events, input_names, output_names, algo0_distribution='01', algo1_distribution='01'):
+    def new_random(cls, C, K, P, input_events, output_events, input_names, output_names,
+                   algo0_distribution='01', algo1_distribution='01'):
         assert all(c in '01' for c in algo0_distribution)
         assert all(c in '01' for c in algo1_distribution)
 
@@ -636,7 +642,8 @@ class EFSM:
                 # c2 = random.choice(list(set(closed_range(2, C)) - {c1}))  # forbid loops
                 add_random_transition(c1, c2)
 
-        log_debug(f'Done building random EFSM with C={efsm.C}, K={efsm.K}, P={efsm.P}, T={efsm.T}, N={efsm.N} in {time.time() - time_start_build:.2f} s')
+        log_debug(f'Done building random EFSM with C={efsm.C}, K={efsm.K}, P={efsm.P},'
+                  f' T={efsm.T}, N={efsm.N} in {time.time() - time_start_build:.2f} s')
         return efsm
 
     @property
@@ -738,7 +745,7 @@ class EFSM:
         for _ in range(scenario_length):
             input_event = random.choice(input_events)
             input_values = ''.join(random.choice(distribution) for _ in range(X))
-            transition, k = self.get_suitable_transition_and_index(current_state, input_event, input_values)  # Note: k is 1-based, 0 if no transition
+            transition, k = self.get_suitable_transition_and_index(current_state, input_event, input_values)
 
             if k == 0:
                 scenario.add_element(input_event, input_values, [OutputAction(None, current_values)])
@@ -793,7 +800,9 @@ class EFSM:
         FBType = etree.Element('FBType')
 
         etree.SubElement(FBType, 'Identification', Standard='61499-2')
-        etree.SubElement(FBType, 'VersionInfo', Organization='nxtControl GmbH', Version='0.0', Author='fbSAT', Date='2011-08-30', Remarks='Template', Namespace='Main', Name='CentralController', Comment='Basic Function Block Type')
+        etree.SubElement(FBType, 'VersionInfo', Organization='nxtControl GmbH', Version='0.0', Author='fbSAT',
+                         Date='2011-08-30', Remarks='Template', Namespace='Main', Name='CentralController',
+                         Comment='Basic Function Block Type')
         InterfaceList = etree.SubElement(FBType, 'InterfaceList')
         BasicFB = etree.SubElement(FBType, 'BasicFB')
 
@@ -832,7 +841,8 @@ class EFSM:
             algorithm = f'{state.algorithm_0}_{state.algorithm_1}'
             etree.SubElement(s, 'ECAction', Algorithm=algorithm, Output=state.output_event)
 
-        etree.SubElement(ECC, 'ECTransition', Source='START', Destination=self.states[self.initial_state].__str_fbt__(), Condition='INIT', x=_r(), y=_r())
+        etree.SubElement(ECC, 'ECTransition', Source='START', x=_r(), y=_r(),
+                         Destination=self.states[self.initial_state].__str_fbt__(), Condition='INIT')
         for state in self.states.values():
             for transition in state.transitions:
                 etree.SubElement(ECC, 'ECTransition', x=_r(), y=_r(),
@@ -982,10 +992,12 @@ class EFSM:
                     log_error(f'incorrect output_event and output_values', symbol=f'{i}:{j}/{len(path)-1}')
                     is_ok = False
                 elif output_event != element.output_event:
-                    log_error(f'incorrect output_event (oe={output_event} != elem.oe={element.output_event})', symbol=f'{i}:{j}/{len(path)-1}')
+                    log_error(f'incorrect output_event (oe={output_event} != elem.oe={element.output_event})',
+                              symbol=f'{i}:{j}/{len(path)-1}')
                     is_ok = False
                 elif new_values != element.output_values:
-                    log_error(f'incorrect output_values (ov={new_values} != elem.ov={element.output_values})', symbol=f'{i}:{j}/{len(path)-1}')
+                    log_error(f'incorrect output_values (ov={new_values} != elem.ov={element.output_values})',
+                              symbol=f'{i}:{j}/{len(path)-1}')
                     is_ok = False
                 # assert output_event == element.output_event
                 # assert new_values == element.output_values
@@ -1003,5 +1015,6 @@ class EFSM:
                 current_state = new_state
                 current_values = new_values
 
-        log_success(f'Done verifying scenario tree of size {scenario_tree.size()} with {scenario_tree.number_of_scenarios} scenario(s) in {time.time() - time_start_verify:.2f} s')
+        log_success(f'Done verifying scenario tree of size {scenario_tree.size()} with'
+                    f' {scenario_tree.number_of_scenarios} scenario(s) in {time.time() - time_start_verify:.2f} s')
         return is_ok

@@ -1,5 +1,5 @@
-import json
 import gzip
+import json
 import pathlib
 from functools import wraps
 
@@ -109,6 +109,7 @@ def auto_finalize(func):
         if finalize:
             self.finalize()
         return result
+
     return wrapped
 
 
