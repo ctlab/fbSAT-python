@@ -2,6 +2,7 @@
 
 Automatic Inference and Generalization of Function Block Finite-State Models
 
+
 ## Requirements
 
 * Python 3.6+
@@ -10,6 +11,8 @@ Automatic Inference and Generalization of Function Block Finite-State Models
 * click
 * treelib (only available on PyPI)
 * colorama (on Windows)
+* SAT solver, e.g., [cryptominisat](https://github.com/msoos/cryptominisat)
+
 
 ## Installation
 
@@ -20,6 +23,7 @@ git clone https://github.com/ctlab/fbSAT
 cd fbSAT
 pip install .
 ```
+
 
 ## Usage
 
@@ -53,12 +57,43 @@ pip install .
 
 </details>
 
+
+## SAT solver
+
+**fbSAT** is able to use any SAT solver, supporting DIMACS input. You can specify it with `--sat-solver <cmd>` flag.
+
+If you already have your favorite SAT solver, use it. If not, check out [cryptominisat](https://github.com/msoos/cryptominisat), [glucose](http://www.labri.fr/perso/lsimon/glucose), [cadical](http://fmv.jku.at/cadical), [lingeling](http://fmv.jku.at/lingeling), or any other.
+
+### Cryptominisat
+
+In order to get cryptominisat, simply download one of [released binary](https://github.com/msoos/cryptominisat/releases) for Linux/Windows.
+
+Moreover, you may even use [docker container](https://hub.docker.com/r/msoos/cryptominisat):
+
+```
+docker pull msoos/cryptominisat
+cat myfile.cnf | docker run --rm -i msoos/cryptominisat
+fbsat ... --sat-solver "docker run --rm -i msoos/cryptominisat"
+```
+
+However, a relatively large launch time of the container (up to 2 seconds on Win) can lead to undesirable large total execution time, since fbSAT makes multiple calls to the SAT solver.
+The solution is to spawn a container only once, in [detached mode](https://docs.docker.com/engine/reference/run/#detached--d), and later [exec](https://docs.docker.com/engine/reference/commandline/exec) cryptominisat in it when necessary:
+
+```
+docker run -d -i --name cms --entrypoint="/bin/sh" msoos/cryptominisat
+fbsat ... --sat-solver "docker exec -i cms /usr/local/bin/cryptominisat5 --verb=0"
+# When finished, do not forget to stop and remove the spawned container:
+docker stop cms
+docker rm cms
+```
+
+
 ## Methods
 
 ### Basic method
 
 This is the most basic and core method. It has one required parameter - number of states (`-C <int>`), and it infers some basic automaton with an arbitrary number of transitions.
-In order to upper-bound number of transitions, use parameter `-T <int>`.
+In order to upper-bound the latter, use option `-T <int>`.
 
 <details>
 <summary><b><code>fbsat -i tests/simple/tests-1.gz -m basic -C 6</code></b></summary>
@@ -167,7 +202,7 @@ The `basic-min` method allows to automatically infer an automaton with the minim
 
 ### Extended method
 
-The `extended` method extends the basic one in a way that guard conditions of the generated automaton are represeted by arbitrary Boolean formulas instead of just truth tables. It has two required parameters: number of states (`-C <int>`) and maximum size of guard conditions parse trees (`-P <int>`). In order to upper-bound total size of guard conditions (total number of typed nodes in all parse trees), use parameter `-N <int>`.
+The `extended` method extends the basic one in a way that guard conditions of the generated automaton are represeted by arbitrary Boolean formulas instead of just truth tables. It has two required parameters: number of states (`-C <int>`) and maximum size of guard conditions parse trees (`-P <int>`). In order to upper-bound the total size of guard conditions (total number of typed nodes in all parse trees), use option `-N <int>`.
 
 <details>
 <summary><b><code>fbsat -i tests/simple/tests-1.gz -m extended -C 6 -P 5</code></b></summary>
@@ -316,9 +351,9 @@ The `extended-min-ub` method exceeds `extended-min`, allowing to automatically i
 
 </details>
 
-### Local-minima heuristic
+### Local-minima-width heuristic
 
-Parameter `-w <int>` defines the maximum width of the local minimum of _N-min_, on which the `extended-min-ub` method stops the long process of iterating the _P_ parameter. This provides a trade-off between execution time and minimality of solution.
+Option `-w <int>` defines the maximum width of the local minimum of _N-min_, on which the `extended-min-ub` method stops the long process of iterating the _P_ parameter. This provides a trade-off between execution time and minimality of solution.
 
 An arbitrary value of w=2 showed a good performance in our initial research (notice the running time difference and the equivalence of the resulting automata):
 
