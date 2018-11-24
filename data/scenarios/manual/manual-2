@@ -1,0 +1,3 @@
+2
+in=REQ[00]; in=REQ[11]; out=A[1]; in=REQ[11]; in=REQ[00]; out=B[1]; in=REQ[10]; out=A[0]; in=REQ[11]; in=REQ[01]; out=B[1];
+in=REQ[10]; in=REQ[01]; out=B[1]; in=REQ[01]; in=REQ[11]; out=A[0]; in=REQ[10]; in=REQ[00]; out=B[1]; in=REQ[10]; out=A[0];
