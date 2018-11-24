@@ -46,15 +46,15 @@ from pathutils import ensure_dir
               help='Comma-separated list of input variables')
 @click.option('--output-names', metavar='<vars...>',
               help='Comma-separated list of output variables')
-@click.option('--exist-err', 'exist', flag_value='error', default=True,
+@click.option('--exist-err', 'exist', flag_value='err', default=True,
               help='Disallow writing in existing folder')
 @click.option('--exist-ok', 'exist', flag_value='ok',
               help='Allow writing in existing folder')
-@click.option('--exist-rm', 'exist', flag_value='remove-all',
+@click.option('--exist-rm', 'exist', flag_value='rm',
               help='Remove everything in existing folder')
-@click.option('--exist-rm-files', 'exist', flag_value='remove-files',
+@click.option('--exist-rm-files', 'exist', flag_value='rm-files',
               help='Remove all files in existing folder recursively')
-@click.option('--exist-re', 'exist', flag_value='recreate',
+@click.option('--exist-re', 'exist', flag_value='re',
               help='Recreate existing folder')
 def cli(outdir, C, K, E, O, X, Z, P, input_events, output_events, input_names, output_names, exist):
     time_start_generate = time.time()

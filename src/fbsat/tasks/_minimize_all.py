@@ -1,7 +1,7 @@
 import os
 import time
 
-from . import MinimalPartialAutomatonTask, MinimizeGuardTask, PartialAutomatonTask, Task
+from . import MinimalBasicAutomatonTask, MinimizeGuardTask, BasicAutomatonTask, Task
 from ..printers import log_br, log_debug, log_error, log_info, log_success, log_warn
 from ..utils import closed_range
 
@@ -10,9 +10,9 @@ __all__ = ['MinimizeAllGuardsTask']
 
 class MinimizeAllGuardsTask(Task):
 
-    def __init__(self, scenario_tree, *, partial_automaton=None, C=None, K=None, T=None, use_bfs=True, solver_cmd=None, is_incremental=False, is_filesolver=False, outdir=''):
+    def __init__(self, scenario_tree, *, basic_automaton=None, C=None, K=None, T=None, use_bfs=True, solver_cmd=None, is_incremental=False, is_filesolver=False, outdir=''):
         self.scenario_tree = scenario_tree
-        self.partial_automaton = partial_automaton
+        self.basic_automaton = basic_automaton
         self.C = C
         self.K = K
         self.T = T
@@ -36,15 +36,15 @@ class MinimizeAllGuardsTask(Task):
         log_debug('MinimizeAllGuardsTask: running...')
         time_start_run = time.time()
 
-        if self.partial_automaton:
-            automaton = self.partial_automaton
+        if self.basic_automaton:
+            automaton = self.basic_automaton
         else:
-            log_debug('MinimizeAllGuardsTask: building partial automaton...')
+            log_debug('MinimizeAllGuardsTask: building basic automaton...')
             if self.T is not None:
-                task = PartialAutomatonTask(**self.subtask_config_automaton)
+                task = BasicAutomatonTask(**self.subtask_config_automaton)
                 automaton = task.run(self.T)
             else:
-                task = MinimalPartialAutomatonTask(**self.subtask_config_automaton)
+                task = MinimalBasicAutomatonTask(**self.subtask_config_automaton)
                 automaton = task.run()
 
         if automaton:

@@ -9,7 +9,7 @@ import treelib
 from .printers import *
 from .utils import *
 
-__all__ = ['ScenarioTree']
+__all__ = ['Scenario', 'ScenarioTree']
 
 
 class OutputAction:
@@ -20,7 +20,7 @@ class OutputAction:
     def __eq__(self, other):
         if isinstance(other, OutputAction):
             return self.output_event == other.output_event and \
-                self.output_values == other.output_values
+                   self.output_values == other.output_values
         return NotImplemented
 
     def __str__(self):
@@ -62,14 +62,15 @@ class ScenarioElement:
     def __eq__(self, other):
         if isinstance(other, ScenarioElement):
             return (self.input_event, self.input_values, self.output_event, self.output_values) == \
-                (other.input_event, other.input_values, other.output_event, other.output_values)
+                   (other.input_event, other.input_values, other.output_event, other.output_values)
         return NotImplemented
 
     def __str__(self):
         return f'{self.input_event}({self.input_values})->{self.output_actions[0]}'
 
     def __repr__(self):
-        return f'ScenarioElement(input_event={self.input_event}, input_values={self.input_values}, output_actions={self.output_actions})'
+        return f'ScenarioElement(input_event={self.input_event}, input_values={self.input_values},' \
+               f' output_actions={self.output_actions})'
 
 
 class Scenario:
@@ -101,13 +102,16 @@ class Scenario:
             for line in map(str.strip, f):
                 scenario = Scenario()
 
-                LocalState = type('', (object,), dict(last_output_values='0' * len(regex.search(r'out=.*?\[([10]*)\]', line).group(1))))
+                _number_of_output_variables = len(regex.search(r'out=.*?\[([10]*)\]', line).group(1))
+                LocalState = type('', (object,), dict(last_output_values='0' * _number_of_output_variables))
 
-                for m in regex.finditer(r'(?:in=(?P<input_event>.*?)\[(?P<input_values>[10]*)\];\s*)+(?:out=(?P<output_event>.*?)\[(?P<output_values>[10]*)\];\s*)*', line):
+                for m in regex.finditer(r'(?:in=(?P<input_event>.*?)\[(?P<input_values>[10]*)\];\s*)+'
+                                        r'(?:out=(?P<output_event>.*?)\[(?P<output_values>[10]*)\];\s*)*', line):
                     t = list(zip(*m.captures('input_event', 'input_values')))
 
                     for input_event, input_values in t[:-1]:
-                        scenario.add_element(input_event, input_values, [OutputAction(None, LocalState.last_output_values)])
+                        scenario.add_element(input_event, input_values,
+                                             [OutputAction(None, LocalState.last_output_values)])
 
                     if not m.captures('output_event'):
                         continue
@@ -124,11 +128,14 @@ class Scenario:
         if number_of_scenarios != len(scenarios):
             log_warn(f'Number of scenarios mismatch: specified {number_of_scenarios}, in fact {len(scenarios)}')
 
-        log_debug(f'Done reading {len(scenarios)} scenarios with total {sum(map(len, scenarios))} elements in {time.time() - time_start_reading:.2f} s')
+        log_debug(f'Done reading {len(scenarios)} scenario(s) with total {sum(map(len, scenarios))}'
+                  f' elements in {time.time() - time_start_reading:.2f} s')
         return scenarios
 
     @classmethod
     def preprocess(cls, scenario):
+        """Return preprocessed scenario with merged successive empty output events
+        """
         processed = cls()  # new Scenario
         processed.elements.append(scenario.elements[0])
         for elem in scenario.elements[1:]:
@@ -143,22 +150,20 @@ class Scenario:
 
         scenarios = list(map(Scenario.preprocess, scenarios_full))
 
-        log_debug(f'Done preprocessing {len(scenarios)} scenarios from {sum(map(len, scenarios_full))} down to {sum(map(len, scenarios))} elements in {time.time() - time_start_preprocessing:.2f} s')
+        log_debug(f'Done preprocessing {len(scenarios)} scenarios from {sum(map(len, scenarios_full))} down'
+                  f' to {sum(map(len, scenarios))} elements in {time.time() - time_start_preprocessing:.2f} s')
         return scenarios
 
 
 class ScenarioTree(treelib.Tree):
+    """Scenario tree built from given scenarios
+    """
 
-    def __init__(self, scenarios, input_names=None, output_names=None, *, preprocess=True, is_trie=True):
+    def __init__(self, scenarios, *, input_names=None, output_names=None, preprocess=True, is_trie=True):
         super().__init__()
 
         if preprocess:
             scenarios = Scenario.preprocess_scenarios(scenarios)
-
-        if input_names:
-            self.input_names = input_names
-        if output_names:
-            self.output_names = output_names
 
         self.number_of_scenarios = len(scenarios)
 
@@ -169,7 +174,8 @@ class ScenarioTree(treelib.Tree):
             for element in scenario.elements:
                 if is_trie:
                     for child in self.children(current.identifier):
-                        if (child.data.input_event, child.data.input_values) == (element.input_event, element.input_values):
+                        if (child.data.input_event, child.data.input_values) == \
+                                (element.input_event, element.input_values):
                             current = child
                             break
                     else:
@@ -181,12 +187,19 @@ class ScenarioTree(treelib.Tree):
                                                parent=current,
                                                data=element)
         root.data.output_values = '0' * len(current.data.output_values)
-        assert all(len(node.data.output_values) == len(root.data.output_values) for node in self.all_nodes_itr())
+        assert all(len(node.data.output_values) == len(root.data.output_values)
+                   for node in self.all_nodes_itr())
 
-        self.input_events = tuple(sorted(set(filter(None, (node.data.input_event for node in self.all_nodes_itr())))))
-        self.output_events = tuple(sorted(set(filter(None, (node.data.output_event for node in self.all_nodes_itr())))))
-        self.unique_inputs = tuple(sorted(set(filter(None, (node.data.input_values for node in self.all_nodes_itr())))))
-        self.unique_outputs = tuple(sorted(set(filter(None, (node.data.output_values for node in self.all_nodes_itr())))))
+        self.input_events = tuple(sorted(set(filter(None, (node.data.input_event
+                                                           for node in self.all_nodes_itr())))))
+        self.output_events = tuple(sorted(set(filter(None, (node.data.output_event
+                                                            for node in self.all_nodes_itr())))))
+        self.unique_inputs = tuple(sorted(set(filter(None, (node.data.input_values
+                                                            for node in self.all_nodes_itr())))))
+        self.unique_outputs = tuple(sorted(set(filter(None, (node.data.output_values
+                                                             for node in self.all_nodes_itr())))))
+        assert all(len(ui) == len(self.unique_inputs[0]) for ui in self.unique_inputs)
+        assert all(len(uo) == len(self.unique_outputs[0]) for uo in self.unique_outputs)
 
         self.V = self.size()
         self.E = len(self.input_events)
@@ -195,6 +208,15 @@ class ScenarioTree(treelib.Tree):
         self.Z = len(self.unique_outputs[0])
         self.U = len(self.unique_inputs)
         self.Y = len(self.unique_outputs)
+
+        if input_names is None:
+            input_names = [f'x{x}' for x in closed_range(1, self.X)]
+        if output_names is None:
+            output_names = [f'z{z}' for z in closed_range(1, self.Z)]
+        self.input_names = input_names
+        self.output_names = output_names
+        assert len(self.input_names) == self.X
+        assert len(self.output_names) == self.Z
 
         def make_array(d):
             return [None for _ in closed_range(d)]
@@ -263,50 +285,6 @@ class ScenarioTree(treelib.Tree):
                 self.V_active_eu[e][u].append(v)
             else:
                 self.V_passive_eu[e][u].append(v)
-
-    @staticmethod
-    def from_files(filename_scenarios, filename_input_names, filename_output_names, preprocess=True):
-        scenarios = Scenario.read_scenarios(filename_scenarios)
-        tree = ScenarioTree(scenarios, preprocess=preprocess)
-
-        input_names = read_names(filename_input_names)
-        # Fix input_variable names if mismatch
-        if len(input_names) != tree.X:
-            input_names = tree.input_names
-            log_warn('input_names are fixed due to mismatch: ' + ','.join(input_names))
-
-        output_names = read_names(filename_output_names)
-        # Fix output variable names if mismatch
-        if len(output_names) != tree.Z:
-            output_names = tree.output_names
-            log_warn('output_names are fixed due to mismatch: ' + ','.join(output_names))
-
-        tree.input_names = input_names
-        tree.output_names = output_names
-
-        return tree
-
-    @property
-    def input_names(self):
-        if hasattr(self, '_input_names'):
-            return self._input_names
-        else:
-            return list(map(lambda x: f'x{x}', closed_range(1, self.X)))
-
-    @input_names.setter
-    def input_names(self, value):
-        self._input_names = value
-
-    @property
-    def output_names(self):
-        if hasattr(self, '_output_names'):
-            return self._output_names
-        else:
-            return [f'z{z}' for z in closed_range(1, self.Z)]
-
-    @output_names.setter
-    def output_names(self, value):
-        self._output_names = value
 
     @property
     def scenarios_stem(self):

@@ -1,14 +1,14 @@
 from ._abc import Task
 from ._full import FullAutomatonTask
 from ._full_minimal import MinimalFullAutomatonTask
-from ._partial import PartialAutomatonTask
-from ._partial_minimal import MinimalPartialAutomatonTask
-from ._complete import CompleteAutomatonTask
-from ._complete_minimal import MinimalCompleteAutomatonTask
-from ._complete_minimal_ub import MinimalCompleteUBAutomatonTask
+from ._basic import BasicAutomatonTask
+from ._basic_min import MinimalBasicAutomatonTask
+from ._extended import ExtendedAutomatonTask
+from ._extended_min import MinimalExtendedAutomatonTask
+from ._extended_min_ub import MinimalExtendedUBAutomatonTask
 from ._minimize import MinimizeGuardTask
 from ._minimize_all import MinimizeAllGuardsTask
 
 # Note: respect the order (Task -> FullAutomaton -> MinimalFullAutomaton)
-# Note: respect the order (Task -> Partial -> MinimalPartial -> Complete -> MinimalComplete)
-# Note: respect the order (Task -> MinimalGuard -> MinimizeAllGuards)
+# Note: respect the order (Task -> Basic -> MinimalBasic -> Extended -> MinimalExtended -> MinimalExtendedUB)
+# Note: respect the order (Task -> MinimizeGuard -> MinimizeAllGuards)

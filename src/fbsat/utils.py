@@ -7,15 +7,14 @@ import click
 
 from .printers import log_debug, log_warn
 
-__all__ = ['NotBool', 'closed_range', 'open_maybe_gzip', 'parse_names',
-           'algorithm2st', 'b2s', 's2b',
+__all__ = ['NotBool', 'closed_range', 'open_maybe_gzip', 'parse_names', 'algorithm2st', 'b2s', 's2b',
            'parse_raw_assignment_algo', 'parse_raw_assignment_bool', 'parse_raw_assignment_int',
            'auto_finalize', 'json_dump']
 
 
 class NotBoolType:
     def __bool__(self):
-        raise RuntimeError('this is not bool')
+        raise ValueError('this is not bool')
 
     def __repr__(self):
         return 'NotBool'
@@ -65,12 +64,12 @@ def algorithm2st(output_variable_names, algorithm_0, algorithm_1):
 
 
 def b2s(data, *, s_True='1', s_False='0'):
-    '''Converts 0-based bool array to string'''
+    """Converts 0-based bool array to string"""
     return ''.join(s_True if x else s_False for x in data)
 
 
 def s2b(s, zero_based=False):
-    '''Converts string to bool array'''
+    """Converts string to bool array"""
     ans = [{'1': True, '0': False}[c] for c in s]
     if zero_based:
         return ans
@@ -106,7 +105,7 @@ def parse_raw_assignment_algo(raw_assignment, data):
 def auto_finalize(func):
     @wraps(func)
     def wrapped(self, *args, finalize=True, **kwargs):
-        result = func(self, *args, **kwargs)
+        result = func(self, *args, multirun=not finalize, **kwargs)
         if finalize:
             self.finalize()
         return result

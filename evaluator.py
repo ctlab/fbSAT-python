@@ -54,18 +54,17 @@ from pathutils import ensure_dir
               help='Use IncrementalSolver backend')
 @click.option('--filesolver', 'is_filesolver', is_flag=True,
               help='Use FileSolver backend')
-@click.option('--exist-err', 'exist', flag_value='error', default=True,
+@click.option('--exist-err', 'exist', flag_value='err', default=True,
               help='Disallow writing in existing folder')
 @click.option('--exist-ok', 'exist', flag_value='ok',
               help='Allow writing in existing folder')
-@click.option('--exist-rm', 'exist', flag_value='remove-all',
+@click.option('--exist-rm', 'exist', flag_value='rm',
               help='Remove everything in existing folder')
-@click.option('--exist-rm-files', 'exist', flag_value='remove-files',
+@click.option('--exist-rm-files', 'exist', flag_value='rm-files',
               help='Remove all files in existing folder recursively')
-@click.option('--exist-re', 'exist', flag_value='recreate',
+@click.option('--exist-re', 'exist', flag_value='re',
               help='Recreate existing folder')
-def cli(indir, outdir, method, C, K, P, T, N, w, use_bfs, is_distinct, is_forbid_or,
-        sat_solver, is_incremental, is_filesolver, exist):
+def cli(indir, outdir, method, C, K, P, T, N, w, use_bfs, is_distinct, is_forbid_or, sat_solver, is_incremental, is_filesolver, exist):
     time_start_evaluate = time.time()
 
     path_input = pathlib.Path(indir)

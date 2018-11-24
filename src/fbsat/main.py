@@ -10,10 +10,10 @@ from .utils import *
 from .version import version as __version__
 
 
-@click.command(context_settings=(dict(
-    max_content_width=999,
-    help_option_names=['-h', '--help']
-)))
+@click.command(context_settings=dict(
+        max_content_width=999,
+        help_option_names=['-h', '--help']
+))
 @click.option('-i', '--scenarios', 'filename_scenarios', metavar='<path>', required=True,
               type=click.Path(exists=True),
               help='File with scenarios')
@@ -22,8 +22,8 @@ from .version import version as __version__
               default='out', show_default=True,
               help='Output directory')
 @click.option('-m', '--method', type=click.Choice(['full', 'full-min',
-                                                   'partial', 'partial-min',
-                                                   'complete', 'complete-min', 'complete-min-ub',
+                                                   'basic', 'basic-min',
+                                                   'extended', 'extended-min', 'extended-min-ub',
                                                    'minimize']), required=True,
               help='Method to use')
 @click.option('--input-names', 'input_names', metavar='<x.../path>', callback=parse_names,
@@ -53,7 +53,7 @@ from .version import version as __version__
               help='Distinct transitions')
 @click.option('--forbid-or/--no-forbid-or', 'is_forbid_or',
               default=False, show_default=True,
-              help='[extended] Forbid OR parse tree nodes')
+              help='[ext] Forbid OR parse tree nodes')
 @click.option('--sat-solver', metavar='<cmd>',
               # default='glucose -model -verb=0', show_default=True,
               default='cryptominisat5 --verb=0', show_default=True,
@@ -79,16 +79,16 @@ def cli(filename_scenarios, outdir, method, input_names, output_names, automaton
     # log_debug(zlib.decompress(base64.b64decode(b'eNqVUUEOwCAIu/MKnrvjSMaWLOFzvmRqFgcKixoOWlppFTCvdG5O8eWCIRunubUHajIfiXdV0uOdo3k+3xZpQgEvebbseS4yWXilgpOKR35YGbHRuMEp4MfDSmc5Eyn1z4jXo6A+mX9x0fphn1Zf0/YPKdybbQ==')).decode(), symbol=None)
     # =====================
 
-    time_start_tree = time.time()
     log_br()
-    scenarios = Scenario.read_scenarios(filename_scenarios)
     log_info('Building scenario tree...')
+    time_start_tree = time.time()
+    scenarios = Scenario.read_scenarios(filename_scenarios)
     scenario_tree = ScenarioTree(scenarios, input_names=input_names, output_names=output_names)
-    log_success(
-        f'Successfully built scenario tree of size {scenario_tree.size()} in {time.time() - time_start_tree:.2f} s')
+    log_success(f'Successfully built scenario tree of size {scenario_tree.size()}'
+                f' in {time.time() - time_start_tree:.2f} s')
 
     if method == 'full':
-        log_info('Full method')
+        log_info(f'{method} method')
         if K is not None:
             log_warn(f'Ignoring specified K={K}')
         if P is not None:
@@ -103,10 +103,10 @@ def cli(filename_scenarios, outdir, method, input_names, output_names, automaton
                       is_filesolver=is_filesolver,
                       outdir=outdir)
         task = FullAutomatonTask(**config)
-        full_automaton = task.run(T)  # noqa
+        efsm = task.run(T)
 
     elif method == 'full-min':
-        log_info('MinimalFull method')
+        log_info(f'{method} method')
         if K is not None:
             log_warn(f'Ignoring specified K={K}')
         if P is not None:
@@ -121,10 +121,10 @@ def cli(filename_scenarios, outdir, method, input_names, output_names, automaton
                       is_filesolver=is_filesolver,
                       outdir=outdir)
         task = MinimalFullAutomatonTask(**config)
-        minimal_full_automaton = task.run()  # noqa
+        efsm = task.run()
 
-    elif method == 'partial':
-        log_info('Partial method')
+    elif method == 'basic':
+        log_info(f'{method} method')
         if P is not None:
             log_warn(f'Ignoring specified P={P}')
         if N is not None:
@@ -137,11 +137,11 @@ def cli(filename_scenarios, outdir, method, input_names, output_names, automaton
                       is_incremental=is_incremental,
                       is_filesolver=is_filesolver,
                       outdir=outdir)
-        task = PartialAutomatonTask(**config)
-        partial_automaton = task.run(T)  # noqa
+        task = BasicAutomatonTask(**config)
+        efsm = task.run(T)
 
-    elif method == 'partial-min':
-        log_info('MinimalPartial method')
+    elif method == 'basic-min':
+        log_info(f'{method} method')
         if P is not None:
             log_warn(f'Ignoring specified P={P}')
         if N is not None:
@@ -154,11 +154,11 @@ def cli(filename_scenarios, outdir, method, input_names, output_names, automaton
                       is_incremental=is_incremental,
                       is_filesolver=is_filesolver,
                       outdir=outdir)
-        task = MinimalPartialAutomatonTask(**config)
-        minimal_partial_automaton = task.run()  # noqa
+        task = MinimalBasicAutomatonTask(**config)
+        efsm = task.run()
 
-    elif method == 'complete':
-        log_info('Complete method')
+    elif method == 'extended':
+        log_info(f'{method} method')
         if T is not None:
             log_warn(f'Ignoring specified T={T}')
         config = dict(scenario_tree=scenario_tree,
@@ -170,11 +170,11 @@ def cli(filename_scenarios, outdir, method, input_names, output_names, automaton
                       is_incremental=is_incremental,
                       is_filesolver=is_filesolver,
                       outdir=outdir)
-        task = CompleteAutomatonTask(**config)
-        complete_automaton = task.run(N)  # noqa
+        task = ExtendedAutomatonTask(**config)
+        efsm = task.run(N)
 
-    elif method == 'complete-min':
-        log_info('MinimalComplete method')
+    elif method == 'extended-min':
+        log_info(f'{method} method')
         if T is not None:
             log_warn(f'Ignoring specified T={T}')
         config = dict(scenario_tree=scenario_tree,
@@ -186,11 +186,11 @@ def cli(filename_scenarios, outdir, method, input_names, output_names, automaton
                       is_incremental=is_incremental,
                       is_filesolver=is_filesolver,
                       outdir=outdir)
-        task = MinimalCompleteAutomatonTask(**config)
-        minimal_complete_automaton = task.run()  # noqa
+        task = MinimalExtendedAutomatonTask(**config)
+        efsm = task.run()
 
-    elif method == 'complete-min-ub':
-        log_info('MinimalCompleteUB method')
+    elif method == 'extended-min-ub':
+        log_info(f'{method} method')
         if P is not None:
             log_warn(f'Ignoring specified P={P}')
         if N is not None:
@@ -206,11 +206,11 @@ def cli(filename_scenarios, outdir, method, input_names, output_names, automaton
                       is_incremental=is_incremental,
                       is_filesolver=is_filesolver,
                       outdir=outdir)
-        task = MinimalCompleteUBAutomatonTask(**config)
-        minimal_complete_automaton = task.run()  # noqa
+        task = MinimalExtendedUBAutomatonTask(**config)
+        efsm = task.run()
 
     elif method == 'minimize':
-        log_info('MinimizeAllGuards method')
+        log_info(f'{method} method')
         if P is not None:
             log_warn(f'Ignoring specified P={P}')
         if N is not None:
@@ -225,9 +225,9 @@ def cli(filename_scenarios, outdir, method, input_names, output_names, automaton
         if automaton:
             with open(automaton, 'rb') as f:
                 log_debug(f'Loading pickled automaton from {automaton}...')
-                config['partial_automaton'] = pickle.load(f)
+                config['basic_automaton'] = pickle.load(f)
         task = MinimizeAllGuardsTask(**config)
-        minimized_automaton = task.run()  # noqa
+        efsm = task.run()
 
     log_br()
     log_success(f'All done in {time.time() - time_start:.2f} s')

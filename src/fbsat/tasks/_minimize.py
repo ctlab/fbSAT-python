@@ -82,7 +82,7 @@ class MinimizeGuardTask(Task):
         self.inputs = inputs
         self.roots = roots
 
-        for P in closed_range(1, 12):
+        for P in closed_range(1, 15):
             log_info(f'Trying P={P}...')
 
             self.P = P
@@ -469,7 +469,7 @@ class MinimizeGuardTask(Task):
                                assignment.parent,
                                assignment.child_left,
                                assignment.child_right,
-                               names=self.scenario_tree.predicate_names)
+                               names=self.scenario_tree.input_names)
 
         log_success(f'Minimized guard: {guard}')
         return guard

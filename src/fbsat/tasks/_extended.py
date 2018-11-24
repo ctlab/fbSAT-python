@@ -1,5 +1,5 @@
-import time
 import pathlib
+import time
 from collections import namedtuple
 from functools import partial
 
@@ -7,20 +7,20 @@ from . import Task
 from ..efsm import EFSM
 from ..printers import log_br, log_debug, log_error, log_info, log_success, log_warn
 from ..solver import FileSolver, IncrementalSolver, StreamSolver
-from ..utils import (auto_finalize, closed_range, parse_raw_assignment_algo,
-                     parse_raw_assignment_bool, parse_raw_assignment_int, json_dump)
+from ..utils import (auto_finalize, closed_range, json_dump, parse_raw_assignment_algo, parse_raw_assignment_bool,
+                     parse_raw_assignment_int)
 
-__all__ = ['CompleteAutomatonTask']
+__all__ = ['ExtendedAutomatonTask']
 
 VARIABLES = 'color transition output_event algorithm_0 algorithm_1 nodetype terminal child_left child_right parent value child_value_left child_value_right first_fired not_fired'
 
 
-class CompleteAutomatonTask(Task):
-
+class ExtendedAutomatonTask(Task):
     Reduction = namedtuple('Reduction', VARIABLES + ' totalizer')
     Assignment = namedtuple('Assignment', VARIABLES + ' C K T P N')
 
-    def __init__(self, scenario_tree, *, C, K=None, P, use_bfs=True, is_distinct=False, is_forbid_or=False, solver_cmd, is_incremental=False, is_filesolver=False, outdir=None, path_output=None):
+    def __init__(self, scenario_tree, *, C, K=None, P, use_bfs=True, is_distinct=False, is_forbid_or=False,
+                 solver_cmd, is_incremental=False, is_filesolver=False, outdir=None, path_output=None):
         # TODO: maybe add T_init
         assert C is not None
         assert P is not None
@@ -33,6 +33,7 @@ class CompleteAutomatonTask(Task):
             path_output = pathlib.Path(outdir)
         elif outdir is not None:
             log_warn(f'Ignoring specified outdir <{outdir}>')
+        path_output.mkdir(parents=True, exist_ok=True)
 
         self.scenario_tree = scenario_tree
         self.C = C
@@ -41,19 +42,21 @@ class CompleteAutomatonTask(Task):
         self.use_bfs = use_bfs
         self.is_distinct = is_distinct
         self.is_forbid_or = is_forbid_or
+        self.solver_cmd = solver_cmd
         self.is_incremental = is_incremental
         self.is_filesolver = is_filesolver
         self.path_output = path_output
-
-        self.params = dict(C=C, K=K, P=P, use_bfs=use_bfs, is_distinct=is_distinct, is_forbid_or=is_forbid_or, solver_cmd=solver_cmd, is_incremental=is_incremental, is_filesolver=is_filesolver, outdir=str(path_output))
         self.save_params()
 
         self.solver_config = dict(cmd=solver_cmd)
         self._new_solver()
 
     def save_params(self):
+        params = dict(C=self.C, K=self.K, P=self.P, use_bfs=self.use_bfs, is_distinct=self.is_distinct,
+                      is_forbid_or=self.is_forbid_or, solver_cmd=self.solver_cmd, is_incremental=self.is_incremental,
+                      is_filesolver=self.is_filesolver, outdir=str(self.path_output))
         path_params = self.path_output / 'info_params.json'
-        json_dump(self.params, path_params)
+        json_dump(params, path_params)
 
     def save_results(self, assignment_or_automaton, N, time_total, path_run):
         A = assignment_or_automaton
@@ -66,7 +69,7 @@ class CompleteAutomatonTask(Task):
             results = dict(**results, SAT=False, time=time_total)
 
         path_results = path_run / 'info_results.json'
-        log_debug(f'Saving results info into <{path_results!s}>...')
+        # log_debug(f'Saving results info into <{path_results!s}>...')
         json_dump(results, path_results)
 
     def save_efsm(self, efsm, path_run):
@@ -81,17 +84,18 @@ class CompleteAutomatonTask(Task):
         efsm_info = dict(C=C, K=K, P=P, T=T, N=N)
 
         path_efsm_info = path_run / 'info_efsm.json'
-        log_debug(f'Saving EFSM info into <{path_efsm_info!s}>...')
+        # log_debug(f'Saving EFSM info into <{path_efsm_info!s}>...')
         json_dump(efsm_info, path_efsm_info)
 
         path_efsm = path_run / f'efsm_C{C}_K{K}_P{P}_T{T}_N{N}'
-        log_debug(f'Dumping EFSM into <{path_efsm!s}>...')
+        # log_debug(f'Dumping EFSM into <{path_efsm!s}>...')
         efsm.dump(str(path_efsm))
 
     def _new_solver(self):
         self._is_base_declared = False
         self._is_totalizer_declared = False
         self._N_defined = None
+
         if self.is_incremental:
             self.solver = IncrementalSolver(**self.solver_config)
         elif self.is_filesolver:
@@ -109,13 +113,16 @@ class CompleteAutomatonTask(Task):
         return self.solver.number_of_clauses
 
     @auto_finalize
-    def run(self, N=None, *, fast=False):
+    def run(self, N=None, *, multirun, fast=False):
         # TODO: rename 'fast' to 'only_assignment'
-        log_debug(f'CompleteAutomatonTask: running for N={N}...')
+        log_debug(f'ExtendedAutomatonTask: running for N={N}...')
         time_start_run = time.time()
 
-        path_run = self.path_output / f'run_N{N}'
-        path_run.mkdir(parents=True)
+        if multirun:
+            path_run = self.path_output / f'run_N{N}'
+        else:
+            path_run = self.path_output
+        path_run.mkdir(parents=True, exist_ok=True)
 
         self._declare_base_reduction()
         if N is not None:
@@ -128,23 +135,24 @@ class CompleteAutomatonTask(Task):
         if fast:
             time_total_run = time.time() - time_start_run
             self.save_results(assignment, N, time_total_run, path_run)
-            log_debug(f'CompleteAutomatonTask: done in {time_total_run:.2f} s')
+            log_debug(f'ExtendedAutomatonTask: done in {time_total_run:.2f} s')
             return assignment
         else:
             automaton = self.build_efsm(assignment)
             time_total_run = time.time() - time_start_run
             self.save_efsm(automaton, path_run)
             self.save_results(automaton, N, time_total_run, path_run)
-            log_debug(f'CompleteAutomatonTask: done in {time_total_run:.2f} s')
+            log_debug(f'ExtendedAutomatonTask: done in {time_total_run:.2f} s')
             log_br()
             if automaton:
-                log_success(f'Complete automaton has {automaton.C} states, {automaton.T} transitions and {automaton.N} nodes')
+                log_success(f'Extended automaton has {automaton.C} states,'
+                            f' {automaton.T} transitions and {automaton.N} nodes')
             else:
-                log_error(f'Complete automaton was not found')
+                log_error(f'Extended automaton was not found')
             return automaton
 
     def finalize(self):
-        # log_debug('CompleteAutomatonTask: finalizing...')
+        # log_debug('ExtendedAutomatonTask: finalizing...')
         if self.is_incremental:
             self.solver.process.kill()
 
@@ -225,15 +233,15 @@ class CompleteAutomatonTask(Task):
         # =-=-=-=-=-=-=
 
         # so_far_state = [self.number_of_clauses, time.time()]
-
-        def so_far():
-            now = self.number_of_clauses
-            time_now = time.time()
-            # ans = now - so_far_state[0]
-            # timing = time_now - so_far_state[1]
-            # so_far_state[0] = now
-            # so_far_state[1] = time_now
-            return f'{ans} in {timing:.2f} s'
+        #
+        # def so_far():
+        #     now = self.number_of_clauses
+        #     time_now = time.time()
+        #     ans = now - so_far_state[0]
+        #     timing = time_now - so_far_state[1]
+        #     so_far_state[0] = now
+        #     so_far_state[1] = time_now
+        #     return f'{ans} in {timing:.2f} s'
 
         # = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 
@@ -243,7 +251,7 @@ class CompleteAutomatonTask(Task):
             ALO(color[v])
             AMO(color[v])
 
-        # comment('1.1. Start vertex corresponds to start state')
+        comment('1.1. Start vertex corresponds to start state')
         add_clause(color[1][1])
 
         comment('1.2. Color definition')
@@ -872,22 +880,22 @@ class CompleteAutomatonTask(Task):
         # =-=-=-=-=
 
         self.reduction = self.Reduction(
-            color=color,
-            transition=transition,
-            output_event=output_event,
-            algorithm_0=algorithm_0,
-            algorithm_1=algorithm_1,
-            nodetype=nodetype,
-            terminal=terminal,
-            child_left=child_left,
-            child_right=child_right,
-            parent=parent,
-            value=value,
-            child_value_left=child_value_left,
-            child_value_right=child_value_right,
-            first_fired=first_fired,
-            not_fired=not_fired,
-            totalizer=None
+                color=color,
+                transition=transition,
+                output_event=output_event,
+                algorithm_0=algorithm_0,
+                algorithm_1=algorithm_1,
+                nodetype=nodetype,
+                terminal=terminal,
+                child_left=child_left,
+                child_right=child_right,
+                parent=parent,
+                value=value,
+                child_value_left=child_value_left,
+                child_value_right=child_value_right,
+                first_fired=first_fired,
+                not_fired=not_fired,
+                totalizer=None
         )
 
         # log_debug(f'Done declaring base reduction ({self.number_of_variables} variables, {self.number_of_clauses} clauses) in {time.time() - time_start_base:.2f} s')
@@ -944,33 +952,33 @@ class CompleteAutomatonTask(Task):
         transition = wrapper_int(self.reduction.transition)
         nodetype = wrapper_int(self.reduction.nodetype)
         assignment = self.Assignment(
-            color=wrapper_int(self.reduction.color),
-            transition=transition,
-            output_event=wrapper_int(self.reduction.output_event),
-            algorithm_0=wrapper_algo(self.reduction.algorithm_0),
-            algorithm_1=wrapper_algo(self.reduction.algorithm_1),
-            nodetype=nodetype,
-            terminal=wrapper_int(self.reduction.terminal),
-            child_left=wrapper_int(self.reduction.child_left),
-            child_right=wrapper_int(self.reduction.child_right),
-            parent=wrapper_int(self.reduction.parent),
-            value=wrapper_bool(self.reduction.value),
-            child_value_left=wrapper_bool(self.reduction.child_value_left),
-            child_value_right=wrapper_bool(self.reduction.child_value_right),
-            first_fired=wrapper_bool(self.reduction.first_fired),
-            not_fired=wrapper_bool(self.reduction.not_fired),
-            C=self.C,
-            K=self.K,
-            P=self.P,
-            T=sum(transition[c][e][k] != 0
-                  for c in closed_range(1, self.C)
-                  for e in closed_range(1, self.scenario_tree.E)
-                  for k in closed_range(1, self.K)),
-            N=sum(nodetype[c][e][k][p] != 4
-                  for c in closed_range(1, self.C)
-                  for e in closed_range(1, self.scenario_tree.E)
-                  for k in closed_range(1, self.K)
-                  for p in closed_range(1, self.P)),
+                color=wrapper_int(self.reduction.color),
+                transition=transition,
+                output_event=wrapper_int(self.reduction.output_event),
+                algorithm_0=wrapper_algo(self.reduction.algorithm_0),
+                algorithm_1=wrapper_algo(self.reduction.algorithm_1),
+                nodetype=nodetype,
+                terminal=wrapper_int(self.reduction.terminal),
+                child_left=wrapper_int(self.reduction.child_left),
+                child_right=wrapper_int(self.reduction.child_right),
+                parent=wrapper_int(self.reduction.parent),
+                value=wrapper_bool(self.reduction.value),
+                child_value_left=wrapper_bool(self.reduction.child_value_left),
+                child_value_right=wrapper_bool(self.reduction.child_value_right),
+                first_fired=wrapper_bool(self.reduction.first_fired),
+                not_fired=wrapper_bool(self.reduction.not_fired),
+                C=self.C,
+                K=self.K,
+                P=self.P,
+                T=sum(transition[c][e][k] != 0
+                      for c in closed_range(1, self.C)
+                      for e in closed_range(1, self.scenario_tree.E)
+                      for k in closed_range(1, self.K)),
+                N=sum(nodetype[c][e][k][p] != 4
+                      for c in closed_range(1, self.C)
+                      for e in closed_range(1, self.scenario_tree.E)
+                      for k in closed_range(1, self.K)
+                      for p in closed_range(1, self.P)),
         )
 
         # log_debug(f'Done building assignment (T={assignment.T}, N={assignment.N}) in {time.time() - time_start_assignment:.2f} s')
@@ -981,10 +989,10 @@ class CompleteAutomatonTask(Task):
             return None
 
         log_br()
-        log_info('CompleteAutomatonTask: building automaton...')
+        log_info('ExtendedAutomatonTask: building automaton...')
         automaton = EFSM.new_with_parse_trees(self.scenario_tree, assignment)
 
-        log_success('Complete automaton:')
+        log_success('Extended automaton:')
         automaton.pprint()
         automaton.verify(self.scenario_tree)
 

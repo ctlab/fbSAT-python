@@ -27,15 +27,15 @@ from pathutils import ensure_dir
 @click.option('--scenario-len', 'scenario_length', metavar='<int>',
               default=50, show_default=True,
               help='Scenario length')
-@click.option('--exist-err', 'exist', flag_value='error', default=True,
+@click.option('--exist-err', 'exist', flag_value='err', default=True,
               help='Disallow writing in existing folder')
 @click.option('--exist-ok', 'exist', flag_value='ok',
               help='Allow writing in existing folder')
-@click.option('--exist-rm', 'exist', flag_value='remove-all',
+@click.option('--exist-rm', 'exist', flag_value='rm',
               help='Remove everything in existing folder')
-@click.option('--exist-rm-files', 'exist', flag_value='remove-files',
+@click.option('--exist-rm-files', 'exist', flag_value='rm-files',
               help='Remove all files in existing folder recursively')
-@click.option('--exist-re', 'exist', flag_value='recreate',
+@click.option('--exist-re', 'exist', flag_value='re',
               help='Recreate existing folder')
 def cli(indir, outdir, number_of_scenarios, scenario_length, exist):
     time_start_simulate = time.time()
@@ -73,7 +73,7 @@ def cli(indir, outdir, number_of_scenarios, scenario_length, exist):
 
     # Simulate scenarios
     scenarios = []
-    log_info(f'Generating {number_of_scenarios} scenarios, each of length {scenario_length}...')
+    log_debug(f'Generating {number_of_scenarios} scenarios, each of length {scenario_length}...')
     for _ in range(number_of_scenarios):
         scenarios.append(efsm.random_walk(scenario_length, input_events=input_events,
                                           X=len(input_names), Z=len(output_names)))
@@ -100,7 +100,7 @@ def cli(indir, outdir, number_of_scenarios, scenario_length, exist):
     # Save scenarios info
     path_scenarios_info = path_output / 'info_scenarios.json'
     with path_scenarios_info.open('w', encoding='utf8') as f:
-        log_info(f'Writing scenarios info into <{path_scenarios_info!s}>...')
+        log_debug(f'Writing scenarios info into <{path_scenarios_info!s}>...')
         scenarios_info = dict(number_of_scenarios=number_of_scenarios,
                               tree_size=scenario_tree.size(),
                               elements_uncompressed=_elements_uncompressed,

@@ -22,24 +22,26 @@ class Guard(ABC):
         # input_values :: [1..X]:Bool
         pass
 
+    @abstractmethod
+    def size(self):
+        pass
+
 
 class FullGuard(Guard):
 
     def __init__(self, input_values, *, names=None):
         self.input_values = input_values  # [1..X]:Bool
         X = len(input_values) - 1
-        if names is not None:
-            if len(names) != len(input_values) - 1:
-                names = [f'x{x}' for x in closed_range(1, X)]
-                log_warn('names are fixed due to mismatch: ' + '.'.join(names))
-        else:
+        if names is None:
             names = [f'x{x}' for x in closed_range(1, X)]
-            log_warn('using default names: ' + '.'.join(names))
         self.names = names
 
     def eval(self, input_values):
         # input_values :: [1..X]:Bool
         return self.input_values[1:] == input_values[1:]
+
+    def size(self):
+        return sum(not v for v in self.input_values[1:]) + 2 * len(self.input_values) - 1
 
     def __str__(self):
         return b2s(self.input_values[1:])
@@ -68,6 +70,9 @@ class TruthTableGuard(Guard):
         # input_values :: [1..X]:Bool
         s = b2s(input_values[1:])
         return self.truth_table[self.unique_inputs.index(s)] in '1x'
+
+    def size(self):
+        return 0
 
     def __str__(self):
         return f'[{self.truth_table}]'
@@ -930,24 +935,31 @@ class EFSM:
         with open(filename, 'w') as f:
             f.write(self.get_smv_string())
 
-    def dump(self, prefix):
-        filename_pkl = prefix + '.pkl'
-        self.write_pkl(filename_pkl)
+    def dump(self, prefix, *, do_pkl=True, do_gv=True, do_svg=True, do_pdf=False, do_fbt=True, do_smv=True):
+        if do_pkl:
+            filename_pkl = prefix + '.pkl'
+            self.write_pkl(filename_pkl)
 
-        filename_gv = prefix + '.gv'
-        self.write_gv(filename_gv)
+        if do_gv:
+            filename_gv = prefix + '.gv'
+            self.write_gv(filename_gv)
 
-        # for output_format in ['svg', 'pdf']:
-        for output_format in ['svg']:
-            cmd = f'dot -T{output_format} {filename_gv} -O'
-            log_debug(cmd, symbol='$')
-            os.system(cmd)
+            if do_svg:
+                cmd = f'dot -Tsvg {filename_gv} -O'
+                log_debug(cmd, symbol='$')
+                os.system(cmd)
+            if do_pdf:
+                cmd = f'dot -Tpdf {filename_gv} -O'
+                log_debug(cmd, symbol='$')
+                os.system(cmd)
 
-        filename_fbt = prefix + '.fbt'
-        self.write_fbt(filename_fbt)
+        if do_fbt:
+            filename_fbt = prefix + '.fbt'
+            self.write_fbt(filename_fbt)
 
-        filename_smv = prefix + '.smv'
-        self.write_smv(filename_smv)
+        if do_smv:
+            filename_smv = prefix + '.smv'
+            self.write_smv(filename_smv)
 
     def verify(self, scenario_tree):
         log_info('Verifying...')
@@ -985,7 +997,8 @@ class EFSM:
                     # log_warn('failed scenario:')
                     # for _j, _identifier in enumerate(path[1:], start=1):
                     #     log_debug(f'{scenario_tree[_identifier].data}', symbol=f'{_j: >2}/{len(path)-1}')
-                    raise AssertionError()
+                    pass
+                    # raise AssertionError()
 
                 current_state = new_state
                 current_values = new_values

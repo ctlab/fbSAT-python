@@ -1,68 +1,69 @@
 EXE = fbsat
-EXTRA =
+EXTRA = --sat-solver incremental-cryptominisat --incremental
 
 all:
 	@echo Specify some target
 
-.PHONY: basic comb
+tests-1: tests-1_basic tests-1_basic-min tests-1_extended tests-1_extended-min tests-1_extended-min-ub tests-1_extended-min-ub-w0 tests-1_extended-min-ub-w2
+tests-1_basic:
+	$(EXE) -i tests/simple/tests-1.gz -o out/tests-1/basic -m basic -C 6 $(EXTRA)
+tests-1_basic-min:
+	$(EXE) -i tests/simple/tests-1.gz -o out/tests-1/basic-min -m basic-min $(EXTRA)
+tests-1_extended:
+	$(EXE) -i tests/simple/tests-1.gz -o out/tests-1/extended -m extended -C 6 -P 5 $(EXTRA)
+tests-1_extended-min:
+	$(EXE) -i tests/simple/tests-1.gz -o out/tests-1/extended-min -m extended-min -P 5 $(EXTRA)
+tests-1_extended-min-ub:
+	$(EXE) -i tests/simple/tests-1.gz -o out/tests-1/extended-min-ub -m extended-min-ub $(EXTRA)
+tests-1_extended-min-ub-w0:
+	$(EXE) -i tests/simple/tests-1.gz -o out/tests-1/extended-min-ub-w0 -m extended-min-ub -w 0 $(EXTRA)
+tests-1_extended-min-ub-w2:
+	$(EXE) -i tests/simple/tests-1.gz -o out/tests-1/extended-min-ub-w2 -m extended-min-ub -w 2 $(EXTRA)
 
-basic: basic_tests-1 basic_tests-10 basic_tests-20 basic_tests-39
-basic_tests-1:
-	$(EXE) basic -i tests/simple/tests-1.gz -C 6 -K 2 -P 3 -N 14 $(EXTRA)
-basic_tests-10:
-	$(EXE) basic -i tests/simple/tests-10.gz -C 8 -K 4 -P 5 -N 25 $(EXTRA)
-basic_tests-20:
-	$(EXE) basic -i tests/simple/tests-20.gz -C 8 -K 4 -P 5 -N 25 $(EXTRA)
-basic_tests-39:
-	$(EXE) basic -i tests/simple/tests-39.gz -C 8 -K 4 -P 5 -N 25 $(EXTRA)
+tests-10: tests-10_basic tests-10_basic-min tests-10_extended tests-10_extended-min tests-10_extended-min-ub tests-10_extended-min-ub-w0 tests-10_extended-min-ub-w2
+tests-10_basic:
+	$(EXE) -i tests/simple/tests-10.gz -o out/tests-10/basic -m basic -C 8 $(EXTRA)
+tests-10_basic-min:
+	$(EXE) -i tests/simple/tests-10.gz -o out/tests-10/basic-min -m basic-min $(EXTRA)
+tests-10_extended:
+	$(EXE) -i tests/simple/tests-10.gz -o out/tests-10/extended -m extended -C 8 -P 5 $(EXTRA)
+tests-10_extended-min:
+	$(EXE) -i tests/simple/tests-10.gz -o out/tests-10/extended-min -m extended-min -P 5 $(EXTRA)
+tests-10_extended-min-ub:
+	$(EXE) -i tests/simple/tests-10.gz -o out/tests-10/extended-min-ub -m extended-min-ub $(EXTRA)
+tests-10_extended-min-ub-w0:
+	$(EXE) -i tests/simple/tests-10.gz -o out/tests-10/extended-min-ub-w0 -m extended-min-ub -w 0 $(EXTRA)
+tests-10_extended-min-ub-w2:
+	$(EXE) -i tests/simple/tests-10.gz -o out/tests-10/extended-min-ub-w2 -m extended-min-ub -w 2 $(EXTRA)
 
-comb: comb_tests-1 comb_tests-10 comb_tests-20 comb_tests-39
-comb_tests-1:
-	$(EXE) combined -i tests/simple/tests-1.gz -C 6 -K 2 -P 3 -N 14 $(EXTRA)
-comb_tests-10:
-	$(EXE) combined -i tests/simple/tests-10.gz -C 8 -K 4 -P 5 -N 25 $(EXTRA)
-comb_tests-20:
-	$(EXE) combined -i tests/simple/tests-20.gz -C 8 -K 4 -P 5 -N 25 $(EXTRA)
-comb_tests-39:
-	$(EXE) combined -i tests/simple/tests-39.gz -C 8 -K 4 -P 5 -N 25 $(EXTRA)
+tests-39: tests-39_basic tests-39_basic-min tests-39_extended tests-39_extended-min tests-39_extended-min-ub tests-39_extended-min-ub-w0 tests-39_extended-min-ub-w2
+tests-39_basic:
+	$(EXE) -i tests/simple/tests-39.gz -o out/tests-39/basic -m basic -C 8 $(EXTRA)
+tests-39_basic-min:
+	$(EXE) -i tests/simple/tests-39.gz -o out/tests-39/basic-min -m basic-min $(EXTRA)
+tests-39_extended:
+	$(EXE) -i tests/simple/tests-39.gz -o out/tests-39/extended -m extended -C 8 -P 5 $(EXTRA)
+tests-39_extended-min:
+	$(EXE) -i tests/simple/tests-39.gz -o out/tests-39/extended-min -m extended-min -P 5 $(EXTRA)
+tests-39_extended-min-ub:
+	$(EXE) -i tests/simple/tests-39.gz -o out/tests-39/extended-min-ub -m extended-min-ub $(EXTRA)
+tests-39_extended-min-ub-w0:
+	$(EXE) -i tests/simple/tests-39.gz -o out/tests-39/extended-min-ub-w0 -m extended-min-ub -w 0 $(EXTRA)
+tests-39_extended-min-ub-w2:
+	$(EXE) -i tests/simple/tests-39.gz -o out/tests-39/extended-min-ub-w2 -m extended-min-ub -w 2 $(EXTRA)
 
-tests-1_all_incremental: tests-1_full-min_incremental tests-1_partial-min_incremental tests-1_complete-min_incremental tests-1_minimize_incremental
-tests-1_full-min_incremental:
-	$(EXE) -i tests/simple/tests-1.gz --sat-solver incremental-cryptominisat --incremental full-min | tee logs/log$(shell date +%y%m%d)_$@
-tests-1_partial-min_incremental:
-	$(EXE) -i tests/simple/tests-1.gz --sat-solver incremental-cryptominisat --incremental partial-min | tee logs/log$(shell date +%y%m%d)_$@
-tests-1_complete-min_incremental:
-	$(EXE) -i tests/simple/tests-1.gz --sat-solver incremental-cryptominisat --incremental complete-min | tee logs/log$(shell date +%y%m%d)_$@
-tests-1_minimize_incremental:
-	$(EXE) -i tests/simple/tests-1.gz --sat-solver incremental-cryptominisat --incremental minimize --automaton out/minimal_partial_tests-1_C6_K6_T8.pkl | tee logs/log$(shell date +%y%m%d)_$@
-
-tests-1_all: tests-1_full-min tests-1_partial-min tests-1_complete-min tests-1_minimize
-tests-1_full-min:
-	$(EXE) -i tests/simple/tests-1.gz --sat-solver cryptominisat5 full-min | tee logs/log$(shell date +%y%m%d)_$@
-tests-1_partial-min:
-	$(EXE) -i tests/simple/tests-1.gz --sat-solver cryptominisat5 partial-min | tee logs/log$(shell date +%y%m%d)_$@
-tests-1_complete-min:
-	$(EXE) -i tests/simple/tests-1.gz --sat-solver cryptominisat5 complete-min | tee logs/log$(shell date +%y%m%d)_$@
-tests-1_minimize:
-	$(EXE) -i tests/simple/tests-1.gz --sat-solver cryptominisat5 minimize --automaton out/minimal_partial_tests-1_C6_K6_T8.pkl | tee logs/log$(shell date +%y%m%d)_$@
-
-
-tests-39_all_incremental: tests-39_full-min_incremental tests-39_partial-min_incremental tests-39_complete-min_incremental tests-39_minimize_incremental
-tests-39_full-min_incremental:
-	$(EXE) -i tests/simple/tests-39.gz --sat-solver incremental-cryptominisat --incremental full-min | tee logs/log$(shell date +%y%m%d)_$@
-tests-39_partial-min_incremental:
-	$(EXE) -i tests/simple/tests-39.gz --sat-solver incremental-cryptominisat --incremental partial-min | tee logs/log$(shell date +%y%m%d)_$@
-tests-39_complete-min_incremental:
-	$(EXE) -i tests/simple/tests-39.gz --sat-solver incremental-cryptominisat --incremental complete-min | tee logs/log$(shell date +%y%m%d)_$@
-tests-39_minimize_incremental:
-	$(EXE) -i tests/simple/tests-39.gz --sat-solver incremental-cryptominisat --incremental minimize --automaton out/minimal_partial_tests-39_C8_K8_T15.pkl | tee logs/log$(shell date +%y%m%d)_$@
-
-tests-39_all: tests-39_full-min tests-39_partial-min tests-39_complete-min tests-39_minimize
-tests-39_full-min:
-	$(EXE) -i tests/simple/tests-39.gz --sat-solver cryptominisat5 full-min | tee logs/log$(shell date +%y%m%d)_$@
-tests-39_partial-min:
-	$(EXE) -i tests/simple/tests-39.gz --sat-solver cryptominisat5 partial-min | tee logs/log$(shell date +%y%m%d)_$@
-tests-39_complete-min:
-	$(EXE) -i tests/simple/tests-39.gz --sat-solver cryptominisat5 complete-min | tee logs/log$(shell date +%y%m%d)_$@
-tests-39_minimize:
-	$(EXE) -i tests/simple/tests-39.gz --sat-solver cryptominisat5 minimize --automaton out/minimal_partial_tests-39_C8_K8_T15.pkl | tee logs/log$(shell date +%y%m%d)_$@
+tests-59: tests-59_basic tests-59_basic-min tests-59_extended tests-59_extended-min tests-59_extended-min-ub tests-59_extended-min-ub-w0 tests-59_extended-min-ub-w2
+tests-59_basic:
+	$(EXE) -i tests/hard/tests-10-60.gz -o out/tests-59/basic -m basic -C 8 $(EXTRA)
+tests-59_basic-min:
+	$(EXE) -i tests/hard/tests-10-60.gz -o out/tests-59/basic-min -m basic-min $(EXTRA)
+tests-59_extended:
+	$(EXE) -i tests/hard/tests-10-60.gz -o out/tests-59/extended -m extended -C 8 -P 5 $(EXTRA)
+tests-59_extended-min:
+	$(EXE) -i tests/hard/tests-10-60.gz -o out/tests-59/extended-min -m extended-min -P 5 $(EXTRA)
+tests-59_extended-min-ub:
+	$(EXE) -i tests/hard/tests-10-60.gz -o out/tests-59/extended-min-ub -m extended-min-ub $(EXTRA)
+tests-59_extended-min-ub-w0:
+	$(EXE) -i tests/hard/tests-10-60.gz -o out/tests-59/extended-min-ub-w0 -m extended-min-ub -w 0 $(EXTRA)
+tests-59_extended-min-ub-w2:
+	$(EXE) -i tests/hard/tests-10-60.gz -o out/tests-59/extended-min-ub-w2 -m extended-min-ub -w 2 $(EXTRA)

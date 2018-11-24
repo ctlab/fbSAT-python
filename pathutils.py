@@ -14,12 +14,12 @@ def ensure_dir(path, exist):
         assert path.is_dir()
         if exist == 'ok':
             pass
-        elif exist == 'remove-files':
+        elif exist == 'rm-files':
             for child in path.rglob('*'):
                 if child.is_file():
                     log_warn(f'Removing file <{child!s}>')
                     child.unlink()
-        elif exist == 'remove-all':
+        elif exist == 'rm':
             for child in path.iterdir():
                 if child.is_dir():
                     log_warn(f'Removing directory <{child!s}>')
@@ -29,7 +29,7 @@ def ensure_dir(path, exist):
                     child.unlink()
                 else:
                     log_warn(f'Neither a directory nor a file: {child}')
-        elif exist == 'recreate':
+        elif exist == 're':
             log_warn(f'Recreating folder <{path}>...')
             shutil.rmtree(str(path))
             path.mkdir()

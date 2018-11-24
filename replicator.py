@@ -25,10 +25,10 @@ def parse_minmax(ctx, param, value):
 # @click.option('-i', '--input', 'indir', metavar='<path>',
 #               type=click.Path(exists=True, file_okay=False), required=True,
 #               help='')
-@click.option('-o', '--output', 'outdir_template', metavar='<path{i}>',
+@click.option('-o', '--output', 'simulation_template', metavar='<path{i}>',
               type=click.Path(writable=True, file_okay=False), required=True,
               default='experiments/random/simulation{i}', show_default=True,
-              help='Template for a path to a simulation')
+              help='Simulation path template (i/C/K/E/O/X/Z/P/ns/sl)')
 @click.option('-s', '--simulations', 'simulations_range', metavar='<min-max>', callback=parse_minmax,
               default='1-9', show_default=True,
               help='Range of replicated simulations')
@@ -37,7 +37,7 @@ def parse_minmax(ctx, param, value):
               help='Number of replicas in each simulation')
 @click.option('--replica-template', metavar='<path{i}>',
               default='replica{i}', show_default=True,
-              help='Template for a replica folder')
+              help='Replica folder template')
 @click.option('-C', 'C', type=int, metavar='<int>', required=True,
               help='Number of states')
 @click.option('-K', 'K', type=int, metavar='<int>',
@@ -63,36 +63,37 @@ def parse_minmax(ctx, param, value):
 @click.option('-l', '--scenario-len', 'scenario_length', metavar='<int>',
               default=50, show_default=True,
               help='Scenario length')
-@click.option('--exist-err', 'exist', flag_value='error', default=True,
+@click.option('--exist-err', 'exist', flag_value='err', default=True,
               help='Disallow writing in existing folder')
 @click.option('--exist-ok', 'exist', flag_value='ok',
               help='Allow writing in existing folder')
-@click.option('--exist-rm', 'exist', flag_value='remove-all',
+@click.option('--exist-rm', 'exist', flag_value='rm',
               help='Remove everything in existing folder')
-@click.option('--exist-rm-files', 'exist', flag_value='remove-files',
+@click.option('--exist-rm-files', 'exist', flag_value='rm-files',
               help='Remove all files in existing folder recursively')
-@click.option('--exist-re', 'exist', flag_value='recreate',
+@click.option('--exist-re', 'exist', flag_value='re',
               help='Recreate existing folder')
-def cli(outdir_template, simulations_range, number_of_replicas, replica_template, C, K, E, O, X, Z, P, number_of_scenarios, scenario_length, exist):
+def cli(simulation_template, simulations_range, number_of_replicas, replica_template, C, K, E, O, X, Z, P, number_of_scenarios, scenario_length, exist):
     time_start_replicate = time.time()
 
-    for s in closed_range(*simulations_range):
-        path_simulation = pathlib.Path(outdir_template.format(i=s))
+    for simulation_index in closed_range(*simulations_range):
+        path_simulation = pathlib.Path(simulation_template.format(i=simulation_index, C=C, K=K, E=E, O=O, X=X, Z=Z, P=P, ns=number_of_scenarios, sl=scenario_length))
         ensure_dir(path_simulation, exist)
 
         path_efsm = path_simulation / 'efsm'
 
         cmd = f'python generator.py -o {path_efsm!s} -C {C} -E {E} -O {O} -X {X} -Z {Z}'
-        log_debug(cmd, symbol='$')
+        log_info(cmd, symbol='$')
         os.system(cmd)
 
-        for r in closed_range(1, number_of_replicas):
-            path_replica = path_simulation / replica_template.format(i=r)
+        for replica_index in closed_range(1, number_of_replicas):
+            path_replica = path_simulation / replica_template.format(i=replica_index)
             path_replica.mkdir(parents=True)
             path_scenarios = path_replica / 'scenarios'
 
             cmd = f'python simulator.py -i {path_efsm!s} -o {path_scenarios!s}'
-            log_debug(cmd, symbol='$')
+            log_br()
+            log_info(cmd, symbol='$')
             os.system(cmd)
 
     log_br()
