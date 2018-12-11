@@ -392,14 +392,13 @@ class EFSM:
                 return (f'_state={self.source.__str_smv__()}'
                         f' & {self.input_event}'
                         f' & ({self.guard.__str_smv__()})'
-                        f' : {self.destination.__str_smv__()};')
+                        f' : {self.destination.__str_smv__()}')
 
             def __str_smv_output_event__(self):
                 return (f'_state={self.source.__str_smv__()}'
+                        f' & {self.input_event}'
                         f' & next(_state)={self.destination.__str_smv__()}'
-                        # f' & {self.input_event}'
-                        # f' & ({self.guard.__str_smv__()})'
-                        f' : TRUE;')
+                        f' : TRUE')
 
         def __init__(self, id, output_event, algorithm_0, algorithm_1):
             self.id = id
@@ -444,7 +443,8 @@ class EFSM:
             return f's{self.id}'
 
         def __str_smv__(self):
-            return f's{self.id}_{self.algorithm_0}_{self.algorithm_1}'
+            # return f's{self.id}_{self.algorithm_0}_{self.algorithm_1}'
+            return f's{self.id}'
 
         def __repr__(self):
             return (f'State(id={self.id!r}, output_event={self.output_event!r},'
@@ -857,65 +857,100 @@ class EFSM:
         return etree.tostring(FBType, encoding='UTF-8', xml_declaration=True, pretty_print=True).decode()
 
     def get_smv_string(self):
-        s = StringIO()
+        # Module name
+        module = f'CONTROL({", ".join(list(self.input_events)+list(self.input_names))})'
 
-        s.write('MODULE main()\n')
-
-        state_names = ', '.join(state.__str_smv__() for state in self.states.values())
-        s.write(f'\nVAR _state : {{{state_names}}};\n')
-
-        for input_event in self.input_events:
-            s.write(f'VAR {input_event} : boolean;\n')
-        for input_name in self.input_names:
-            s.write(f'VAR {input_name} : boolean;\n')
+        # Variables declaration
+        var_dict = OrderedDict()
+        var_dict['_state'] = '{' + ', '.join(state.__str_smv__() for state in self.states.values()) + '}'
         for output_event in self.output_events:
-            s.write(f'VAR {output_event} : boolean;\n')
+            if output_event == 'INITO':
+                continue
+            var_dict[output_event] = 'boolean'
         for output_name in self.output_names:
-            s.write(f'VAR {output_name} : boolean;\n')
+            var_dict[output_name] = 'boolean'
+        # var_dict['_vs'] = 'boolean'
+        # var_dict['_vac'] = 'boolean'
 
-        s.write('\nASSIGN\n')
+        # Init values
+        init_dict = OrderedDict()
+        init_dict['_state'] = self.states[self.initial_state].__str_smv__()
+        for output_event in self.output_events:
+            if output_event == 'INITO':
+                continue
+            init_dict[output_event] = 'FALSE'
+        for output_name in self.output_names:
+            init_dict[output_name] = 'FALSE'
+        # init_dict['_vs'] = 'FALSE'
+        # init_dict['_vac'] = 'FALSE'
 
-        s.write(f'\ninit(_state) := {self.states[self.initial_state].__str_smv__()};\n')
-        s.write('\nnext(_state) := case\n')
+        # Next values
+        next_dict = OrderedDict()
+
+        def build_case(cases, *, default):
+            s = StringIO()
+            s.write('case\n')
+            for case in cases:
+                s.write(f'    {case};\n')
+            s.write(f'    TRUE : {default};\n')
+            s.write('esac')
+            return s.getvalue()
+
+        _state_cases = []
         for state in self.states.values():
             for transition in state.transitions:
-                s.write('    ' + transition.__str_smv_destination__() + '\n')
-        s.write('    TRUE: _state;\n')
-        s.write('esac;\n')
+                _state_cases.append(transition.__str_smv_destination__())
+        next_dict['_state'] = build_case(_state_cases, default='_state')
 
         for output_event in self.output_events:
             if output_event == 'INITO':
                 continue
-            s.write(f'\ninit({output_event}) := FALSE;\n')
-            s.write(f'\nnext({output_event}) := case\n')
+            cases = []
             for state in self.states.values():
                 for transition in state.transitions:
-                    s.write('    ' + transition.__str_smv_output_event__() + '\n')
-            s.write('    TRUE: FALSE;\n')
-            s.write('esac;\n')
+                    cases.append(transition.__str_smv_output_event__())
+            next_dict[output_event] = build_case(cases, default='FALSE')
 
         for z in closed_range(1, self.Z):
             output_name = self.output_names[z - 1]
-            s.write(f'\ninit({output_name}) := FALSE;\n')
-            s.write(f'\nnext({output_name}) := case\n')
+            cases = []
             d = {'00': [], '01': [], '10': [], '11': []}
             for state in self.states.values():
                 for transition in state.transitions:
-                    new0 = transition.destination.algorithm_0[z - 1]
-                    new1 = transition.destination.algorithm_1[z - 1]
-                    d[f'0{new0}'].append(f'next(_state) = {transition.destination.__str_smv__()}')
-                    d[f'1{new1}'].append(f'next(_state) = {transition.destination.__str_smv__()}')
+                    destination = transition.destination
+                    d[f'0{destination.algorithm_0[z-1]}'].append(f'next(_state) = {destination.__str_smv__()}')
+                    d[f'1{destination.algorithm_1[z-1]}'].append(f'next(_state) = {destination.__str_smv__()}')
             if d['00']:
-                s.write(f'    !{output_name} & (' + ' | '.join(d['00']) + ') : FALSE;\n')
+                cases.append(f'!{output_name} & ({" | ".join(d["00"])}) : FALSE')
             if d['01']:
-                s.write(f'    !{output_name} & (' + ' | '.join(d['01']) + ') : TRUE;\n')
+                cases.append(f'!{output_name} & ({" | ".join(d["01"])}) : TRUE')
             if d['10']:
-                s.write(f'    {output_name} & (' + ' | '.join(d['10']) + ') : FALSE;\n')
+                cases.append(f'{output_name} & ({" | ".join(d["10"])}) : FALSE')
             if d['11']:
-                s.write(f'    {output_name} & (' + ' | '.join(d['11']) + ') : TRUE;\n')
-            s.write(f'    TRUE : {output_name};\n')
-            s.write('esac;\n')
+                cases.append(f'{output_name} & ({" | ".join(d["11"])}) : TRUE')
+            next_dict[output_name] = build_case(cases, default=output_name)
 
+        # _vs_cases = ['next(CNF) & next(vacuum_on) : TRUE',
+        #             'next(CNF) & next(vacuum_off) : FALSE',
+        #             'next(CNF) & !next(vacuum_on) : FALSE']
+        # next_dict['_vs'] = build_case(_vs_cases, default='_vs')
+
+        if set(init_dict.keys()) != set(next_dict.keys()):
+            log_warn(f'keys mismatch:\n    init_dict.keys() = {list(init_dict.keys())}\n    next_dict.keys() = {list(next_dict.keys())}')
+
+        assert set(init_dict.keys()) == set(next_dict.keys())
+
+        s = StringIO()
+        s.write(f'MODULE {module}\n')
+        s.write('VAR\n')
+        for var_name, var_decl in var_dict.items():
+            s.write(f'    {var_name} : {var_decl};\n')
+        s.write('ASSIGN\n')
+        for name in init_dict.keys():
+            init_decl = init_dict[name]
+            next_decl = next_dict[name]
+            s.write(f'init({name}) := {init_decl};\n')
+            s.write(f'next({name}) := {next_decl};\n\n')
         return s.getvalue()
 
     def write_pkl(self, filename):
